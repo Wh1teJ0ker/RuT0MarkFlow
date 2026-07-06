@@ -78,10 +78,13 @@ function assertSemver(version, file) {
 function readTagArg(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--tag") {
+      if (!argv[index + 1]) {
+        throw new Error("Missing value for --tag");
+      }
       return argv[index + 1];
     }
   }
-  return process.env.GITHUB_REF_NAME || null;
+  return null;
 }
 
 main().catch((error) => {
