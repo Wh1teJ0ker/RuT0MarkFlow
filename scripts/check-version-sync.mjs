@@ -1,21 +1,26 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const SEMVER_PATTERN =
   /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(scriptDir, "..");
+
 async function main() {
   const packageJson = JSON.parse(
-    await readFile("/Users/joker/Code/RuT0MarkFlow/package.json", "utf8"),
+    await readFile(resolve(repoRoot, "package.json"), "utf8"),
   );
   const cargoToml = await readFile(
-    "/Users/joker/Code/RuT0MarkFlow/src-tauri/Cargo.toml",
+    resolve(repoRoot, "src-tauri/Cargo.toml"),
     "utf8",
   );
   const tauriConfig = JSON.parse(
-    await readFile("/Users/joker/Code/RuT0MarkFlow/src-tauri/tauri.conf.json", "utf8"),
+    await readFile(resolve(repoRoot, "src-tauri/tauri.conf.json"), "utf8"),
   );
 
   const packageVersion = packageJson.version;

@@ -5,7 +5,7 @@ date: 2026-07-06
 
 ## 审查说明
 
-已向 `review-agent` 会话（`sess_7aafe4ae-705f-4e88-9088-31f851b3ec81`，运行时模型 `商汤-1 / deepseek-v4-flash`）真实投递复审指令，但会话未覆写产物文件，仓库中保留的是早期旧版审查内容。为避免错误结论继续污染验收链路，本文件由主会话按 `TASK-PT1-HANDOFF.md`、`TASK-PT1-REPORT.md`、实际代码和最新压测结果做对账纠偏。
+已向 `review-agent` companion 会话真实投递复审指令，但会话未覆写产物文件，仓库中保留的是早期旧版审查内容。为避免错误结论继续污染验收链路，本文件由主会话按 `TASK-PT1-HANDOFF.md`、`TASK-PT1-REPORT.md`、实际代码和最新压测结果做对账纠偏。
 
 **review_passed** — 当前实现满足 HANDOFF goal，5/5 acceptance criteria 全部达成，scope 无越界，验证充分，文档与最新压测结果一致。
 
