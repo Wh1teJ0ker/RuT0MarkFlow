@@ -18,9 +18,6 @@ src-tauri/target/
 # OS
 .DS_Store
 Thumbs.db
-.zcode-normal.png
-zcode-window.png
-zcode-after-click.png
 
 # Environment
 .env

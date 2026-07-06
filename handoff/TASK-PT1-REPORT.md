@@ -94,7 +94,7 @@ Out_of_scope items strictly avoided:
 - ❌ No Markdown rendering pipeline changes
 - ❌ No editor interaction features added
 - ❌ No unrelated UI style adjustments
-- ❌ No zcode bridge functionality changes
+- ❌ No unrelated infrastructure tooling changes
 
 ---
 

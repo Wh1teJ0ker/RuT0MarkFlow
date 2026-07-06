@@ -2,14 +2,14 @@
   "name": "rut0markflow",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "vitest run",
-    "zcode:bridge": "node tools/zcode-bridge.mjs"
+    "test": "vitest run"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",

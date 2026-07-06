@@ -41,7 +41,7 @@ date: 2026-07-06
 | `docs/05-验收记录.md` | 更新 | 11.4.1 / 11.4.2 验收证据更新 |
 | `handoff/FINAL-ACCEPTANCE.md` | 更新 | 最终验收同步 |
 
-out_of_scope 也被遵守：没有渲染管线变更、没有编辑器功能扩写、没有无关 UI 改动、没有 zcode bridge 业务逻辑修改。
+out_of_scope 也被遵守：没有渲染管线变更、没有编辑器功能扩写、没有无关 UI 改动、没有无关基础设施工具修改。
 
 ## 4. Verification 核对
 

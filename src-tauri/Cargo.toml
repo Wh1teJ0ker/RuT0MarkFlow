@@ -1,6 +1,7 @@
 [package]
 name = "rut0markflow"
 version = "0.1.0"
+license = "MIT"
 description = "RuT0MarkFlow — A Markdown workspace browser and editor"
 authors = []
 edition = "2021"
