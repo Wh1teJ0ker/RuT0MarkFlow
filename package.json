@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "vitest run"
+    "test": "vitest run",
+    "version:check": "node scripts/check-version-sync.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
