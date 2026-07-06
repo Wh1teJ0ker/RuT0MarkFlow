@@ -1,0 +1,78 @@
+/* ── Markdown Content Styles (Dark Theme) ───────────────────── */
+
+[data-theme="dark"] .markdown-body {
+  color: var(--color-text, #d4d4d4);
+}
+
+[data-theme="dark"] .markdown-body h1,
+[data-theme="dark"] .markdown-body h2 {
+  border-bottom-color: var(--color-border, #3c3c3c);
+}
+
+[data-theme="dark"] .markdown-body h6 {
+  color: var(--color-text-muted, #6a6a6a);
+}
+
+[data-theme="dark"] .markdown-body code {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text, #d4d4d4);
+}
+
+[data-theme="dark"] .markdown-body pre {
+  background: #0d1117;
+  border-color: var(--color-border, #3c3c3c);
+  border-left-color: var(--color-accent, #4a90d9);
+}
+
+[data-theme="dark"] .markdown-body pre::-webkit-scrollbar-thumb {
+  background: var(--color-border, #3c3c3c);
+}
+
+[data-theme="dark"] .markdown-body blockquote {
+  background: var(--color-surface, #252526);
+  color: var(--color-text-muted, #6a6a6a);
+}
+
+[data-theme="dark"] .markdown-body th,
+[data-theme="dark"] .markdown-body td {
+  border-color: var(--color-border, #3c3c3c);
+}
+
+[data-theme="dark"] .markdown-body th {
+  background: var(--color-surface, #252526);
+}
+
+[data-theme="dark"] .markdown-body tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="dark"] .markdown-body hr {
+  background: var(--color-border, #3c3c3c);
+}
+
+[data-theme="dark"] .markdown-body .render-error {
+  background: #3d1f1e;
+  border-color: #e74c3c;
+  color: #e8a09a;
+}
+
+[data-theme="dark"] .markdown-body .image-error {
+  border-color: var(--color-border, #3c3c3c);
+  background: var(--color-surface, #252526);
+  color: var(--color-text-muted, #6a6a6a);
+}
+
+[data-theme="dark"] .markdown-body .math-error {
+  border-color: #e74c3c;
+  color: #e8a09a;
+}
+
+[data-theme="dark"] .find-highlight {
+  background: #665500;
+  color: #fff;
+}
+
+[data-theme="dark"] .find-highlight--current {
+  background: #cc7700;
+  color: #fff;
+}

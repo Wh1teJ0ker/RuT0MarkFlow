@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+tsconfig.tsbuildinfo
+index.js
+
+# Rust build
+src-tauri/target/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+.zcode-normal.png
+zcode-window.png
+zcode-after-click.png
+
+# Environment
+.env
+.env.local

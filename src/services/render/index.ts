@@ -1,0 +1,177 @@
+import { marked } from "marked";
+import type { RenderResult, RenderOptions } from "../../types";
+import { sanitizeHtml } from "./sanitize";
+import { preprocessMath, postprocessMath } from "./math";
+import { resolveResources } from "./resource";
+import { splitMarkdown } from "./chunker";
+
+// Re-export chunker so useRender can import it from the same barrel
+export { splitMarkdown } from "./chunker";
+
+// ── Marked global configuration ─────────────────────────────────
+// gfm: true enables tables, task lists, strikethrough, etc.
+// breaks: true converts soft line breaks (\n) to <br> for Chinese text.
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+});
+
+/**
+ * Render Markdown content to sanitized HTML, with math and resource resolution.
+ *
+ * Pipeline:
+ * 1. Pre-process: extract math formulas → placeholders
+ * 2. Marked parse: Markdown → raw HTML
+ * 3. Resource resolution: resolve relative paths for images/links (+ onerror)
+ * 4. Math post-process: render extracted formulas via KaTeX
+ * 5. HTML sanitization: DOMPurify
+ */
+export function renderMarkdown(
+  content: string,
+  options?: RenderOptions,
+): RenderResult {
+  const errors: string[] = [];
+  const imageErrors: string[] = [];
+  const mathErrors: string[] = [];
+  let hasDegradedBlocks = false;
+
+  if (!content) {
+    return { html: "", errors, hasDegradedBlocks: false, imageErrors, mathErrors };
+  }
+
+  // ── Step 1: Pre-process math ────────────────────────────────
+  let processed = content;
+  let mathPlaceholders: { placeholder: string; formula: string; display: boolean }[] = [];
+
+  try {
+    const mathResult = preprocessMath(processed);
+    processed = mathResult.text;
+    mathPlaceholders = mathResult.placeholders;
+  } catch (e) {
+    errors.push(`数学公式预处理失败: ${e instanceof Error ? e.message : String(e)}`);
+    hasDegradedBlocks = true;
+  }
+
+  // ── Step 2: Markdown → HTML ─────────────────────────────────
+  let rawHtml = "";
+  try {
+    rawHtml = marked.parse(processed, { async: false }) as string;
+  } catch (e) {
+    errors.push(`Markdown 渲染失败: ${e instanceof Error ? e.message : String(e)}`);
+    return {
+      html: `<div class="render-error"><p>渲染失败: ${e instanceof Error ? e.message : String(e)}</p></div>`,
+      errors, hasDegradedBlocks: true, imageErrors, mathErrors,
+    };
+  }
+
+  // ── Step 2b: Garbled text diagnosis ─────────────────────────
+  // Compare marked output vs original to detect double-encoding
+  // or entity corruption early (Tauri webview / DOMPurify edge cases).
+  // Wrap in try-catch so logging never breaks rendering.
+  try {
+    const hasChinese = /[\u4e00-\u9fff]/.test(content);
+    const hasHtmlEntities = /&[#a-zA-Z0-9]+;/.test(rawHtml);
+    const hasAngleBrackets = /[<>]/.test(content);
+    if ((hasChinese || hasHtmlEntities || hasAngleBrackets) && rawHtml.length > 0) {
+      // Check if DOMPurify has mangled entities by scanning for &amp;
+      // which would indicate double-encoding (& → &amp;)
+      const entityCount = (rawHtml.match(/&[#a-zA-Z0-9]+;/g) || []).length;
+      const doubleEncodedCount = (rawHtml.match(/&amp;[#a-zA-Z]/g) || []).length;
+      if (doubleEncodedCount > entityCount * 0.1) {
+        console.warn(
+          `[RuT0MarkFlow] Possible double-encoding detected: ${doubleEncodedCount} &amp; in ${entityCount} entities. ` +
+          `Check DOMPurify configuration. Sample: ${rawHtml.slice(0, 200)}`,
+        );
+      }
+    }
+  } catch (_e) {
+    // Logging must never break rendering
+  }
+
+  // ── Step 3: Resolve resources ───────────────────────────────
+  try {
+    const resourceResult = resolveResources(rawHtml, {
+      documentDir: options?.documentDir,
+      rootPath: options?.rootPath,
+      convertFileSrc: options?.convertFileSrc,
+    });
+    rawHtml = resourceResult.html;
+    imageErrors.push(...resourceResult.imageErrors);
+    if (resourceResult.imageErrors.length > 0) hasDegradedBlocks = true;
+  } catch (e) {
+    errors.push(`资源解析失败: ${e instanceof Error ? e.message : String(e)}`);
+    hasDegradedBlocks = true;
+  }
+
+  // ── Step 4: Post-process math (render KaTeX) ────────────────
+  try {
+    rawHtml = postprocessMath(rawHtml, mathPlaceholders, mathErrors);
+    if (mathErrors.length > 0) hasDegradedBlocks = true;
+  } catch (e) {
+    errors.push(`公式渲染失败: ${e instanceof Error ? e.message : String(e)}`);
+    hasDegradedBlocks = true;
+  }
+
+  // ── Step 5: Sanitize HTML ───────────────────────────────────
+  let safeHtml = "";
+  try {
+    safeHtml = sanitizeHtml(rawHtml);
+  } catch (e) {
+    errors.push(`HTML 净化失败: ${e instanceof Error ? e.message : String(e)}`);
+    return {
+      html: `<div class="render-error"><p>HTML 净化失败</p></div>`,
+      errors, hasDegradedBlocks: true, imageErrors, mathErrors,
+    };
+  }
+
+  // ── Step 5b: Post-sanitize diagnosis ───────────────────────
+  // Compare safeHtml with rawHtml to detect DOMPurify corruption.
+  try {
+    const hasChineseSafe = /[\u4e00-\u9fff]/.test(safeHtml);
+    const hasChineseRaw = /[\u4e00-\u9fff]/.test(rawHtml);
+    if (hasChineseRaw && !hasChineseSafe && rawHtml.length > 0) {
+      console.warn(
+        `[RuT0MarkFlow] DOMPurify stripped Chinese characters! ` +
+        `Raw had Chinese, safe does not. DOMPurify may need explicit window. ` +
+        `Sample raw: ${rawHtml.slice(0, 100)} / safe: ${safeHtml.slice(0, 100)}`,
+      );
+    }
+    const ampCount = (safeHtml.match(/&amp;/g) || []).length;
+    const rawAmpCount = (rawHtml.match(/&amp;/g) || []).length;
+    if (ampCount > rawAmpCount && ampCount > 0) {
+      console.warn(
+        `[RuT0MarkFlow] DOMPurify added ${ampCount - rawAmpCount} extra &amp; entities. ` +
+        `Check DOMPurify configuration.`,
+      );
+    }
+  } catch (_e) {
+    // Logging must never break rendering
+  }
+
+  return {
+    html: safeHtml,
+    errors, hasDegradedBlocks, imageErrors, mathErrors,
+  };
+}
+
+/**
+ * Convenience: render each chunk of a long document through the full
+ * renderMarkdown pipeline and return chunked results wrapped in
+ * `.render-chunk` divs.
+ *
+ * The caller (useRender) typically handles chunk scheduling itself;
+ * this function is provided as a building block for direct use or
+ * testing.
+ */
+export function renderMarkdownChunks(
+  content: string,
+  options?: RenderOptions,
+  maxChunkLines = 500,
+): { chunks: RenderResult[]; html: string } {
+  const parts = splitMarkdown(content, maxChunkLines);
+  const chunks: RenderResult[] = parts.map((chunk) => renderMarkdown(chunk, options));
+  const html = chunks
+    .map((c, i) => `<div class="render-chunk" data-chunk-index="${i}">${c.html}</div>`)
+    .join("");
+  return { chunks, html };
+}

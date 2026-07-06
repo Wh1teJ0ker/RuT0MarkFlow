@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-07-06T10:53:12.913Z",
+  "platform": "darwin arm64",
+  "nodeVersion": "v22.17.0",
+  "fileCount": 1000,
+  "scanDurationMs": 9.6,
+  "indexDurationMs": 3.17,
+  "totalDurationMs": 12.77,
+  "quality": "excellent (< 500ms for 1000 files)",
+  "filesPerSec": 104119,
+  "workspaceSizeMb": 0.38,
+  "testPassed": true,
+  "clippyCleaned": true
+}
