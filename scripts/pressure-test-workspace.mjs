@@ -278,6 +278,7 @@ async function main() {
   };
 
   const reportPath = join(PROJECT_ROOT, "handoff", "pressure-test-report.json");
+  mkdirSync(dirname(reportPath), { recursive: true });
   writeFileSync(reportPath, JSON.stringify(report, null, 2), "utf-8");
   console.log(`\n结构化报告已写入: ${reportPath}`);
 
