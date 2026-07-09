@@ -62,7 +62,7 @@ export interface DocumentState {
   isDirty: boolean;
   isSaving: boolean;
   isNew: boolean;
-  openError?: string;
+  openError?: AppErrorPayload;
 }
 
 // ── View / Render ──────────────────────────────────────────────
@@ -127,6 +127,43 @@ export interface AppErrorPayload {
   message: string;
   detail?: string;
   recoverable: boolean;
+  domain?: AppErrorDomain;
+  operation?: AppErrorOperation;
+  recoveryAction?: AppRecoveryAction;
+}
+
+export type AppErrorDomain = "document" | "workspace" | "system";
+
+export type AppErrorOperation =
+  | "open-document"
+  | "save-document"
+  | "save-document-as"
+  | "pick-save-path"
+  | "select-workspace"
+  | "load-workspace"
+  | "restore-workspace"
+  | "refresh-workspace"
+  | "invoke-command";
+
+export type AppRecoveryAction =
+  | "retry-open-document"
+  | "retry-save-document"
+  | "reselect-workspace"
+  | "none";
+
+export interface AppErrorDisplay {
+  title: string;
+  description: string;
+  statusMessage: string;
+  actionLabel: string | null;
+  canRetry: boolean;
+}
+
+export interface DocumentStatusDescriptor {
+  label: string;
+  tone: "default" | "dirty" | "saving" | "error";
+  retryable: boolean;
+  retryLabel?: string;
 }
 
 // ── Command result payloads (placeholder) ──────────────────────
@@ -134,6 +171,15 @@ export interface AppErrorPayload {
 export interface HealthCheckResult {
   status: string;
   version: string;
+}
+
+export interface VersionInfo {
+  releaseTag: string;
+  appVersion: string;
+  frontendVersion: string;
+  backendVersion: string;
+  workspaceSchemaVersion: string;
+  tauriVersion: string;
 }
 
 export interface DocumentOpenResult {

@@ -9,7 +9,14 @@ describe("Sidebar retry (T39)", () => {
       <Sidebar
         workspace={null}
         workspaceState="error"
-        workspaceError={{ code: "SCAN_FAILED", message: "扫描失败", recoverable: true }}
+        workspaceError={{
+          code: "SCAN_FAILED",
+          message: "扫描失败",
+          recoverable: true,
+          domain: "workspace",
+          operation: "restore-workspace",
+          recoveryAction: "reselect-workspace",
+        }}
         fileCount={0}
         indexTree={[]}
         onOpenDocument={vi.fn()}
@@ -18,6 +25,7 @@ describe("Sidebar retry (T39)", () => {
       />,
     );
 
+    expect(screen.getByText("工作区恢复失败")).toBeTruthy();
     const btn = screen.getByText("重新选择工作区");
     expect(btn).toBeTruthy();
     fireEvent.click(btn);

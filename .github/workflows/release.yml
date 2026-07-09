@@ -59,6 +59,9 @@ jobs:
       - name: Check version sync
         run: pnpm version:check -- --tag "${{ github.ref_name }}"
 
+      - name: Run repo hygiene checks
+        run: pnpm repo:check
+
       - name: Run frontend tests
         run: pnpm test
 
@@ -67,6 +70,9 @@ jobs:
 
       - name: Run Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Run pressure test gate
+        run: PRESSURE_SKIP_CLIPPY=1 pnpm pressure:test
 
       - name: Run Rust clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
@@ -147,3 +153,19 @@ jobs:
           workflowArtifactNamePattern: "[platform]-[arch]-[bundle]"
           retryAttempts: 2
           args: ${{ matrix.args }}
+
+      - name: Build and publish portable Windows binary
+        if: runner.os == 'Windows'
+        uses: tauri-apps/tauri-action@v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: RuT0MarkFlow ${{ github.ref_name }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          uploadUpdaterJson: false
+          uploadPlainBinary: true
+          uploadWorkflowArtifacts: false
+          releaseAssetNamePattern: "[name]_[version]_[platform]_[arch]_portable[ext]"
+          retryAttempts: 2
+          args: --no-sign --no-bundle

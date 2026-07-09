@@ -1,5 +1,6 @@
 import { invokeTauriCommand } from "../../services/tauri";
 import type {
+  AppErrorPayload,
   DocumentOpenResult,
   DocumentSaveResult,
   DocumentState,
@@ -12,10 +13,16 @@ import type {
 export async function openDocument(
   rootPath: string,
   relativePath: string,
-): Promise<{ state: DocumentState; error?: string }> {
+): Promise<{ state: DocumentState; error?: AppErrorPayload }> {
   const result = await invokeTauriCommand<DocumentOpenResult>("open_document", {
     rootPath,
     relativePath,
+  }, {
+    domain: "document",
+    operation: "open-document",
+    fallbackMessage: "暂时无法打开该文档",
+    recoveryAction: "retry-open-document",
+    recoverable: true,
   });
 
   if (result.success && result.data) {
@@ -34,20 +41,20 @@ export async function openDocument(
     };
   }
 
-  const errorMsg = result.error?.message || "文档打开失败";
+  const error = result.error;
   return {
     state: {
       path: null,
-      relativePath: null,
-      title: "",
+      relativePath,
+      title: relativePath,
       content: "",
       lastSavedContent: "",
       isDirty: false,
       isSaving: false,
       isNew: false,
-      openError: errorMsg,
+      openError: error ?? undefined,
     },
-    error: errorMsg,
+    error: error ?? undefined,
   };
 }
 
@@ -58,11 +65,17 @@ export async function saveDocument(
   rootPath: string,
   relativePath: string,
   content: string,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: AppErrorPayload }> {
   const result = await invokeTauriCommand<DocumentSaveResult>("save_document", {
     rootPath,
     relativePath,
     content,
+  }, {
+    domain: "document",
+    operation: "save-document",
+    fallbackMessage: "暂时无法保存当前文档",
+    recoveryAction: "retry-save-document",
+    recoverable: true,
   });
 
   if (result.success && result.data) {
@@ -70,7 +83,7 @@ export async function saveDocument(
   }
   return {
     success: false,
-    error: result.error?.message || "文档保存失败",
+    error: result.error ?? undefined,
   };
 }
 
@@ -83,11 +96,17 @@ export async function pickSavePath(
 ): Promise<{
   cancelled: boolean;
   path?: PickSavePathResult;
-  error?: string;
+  error?: AppErrorPayload;
 }> {
   const result = await invokeTauriCommand<PickSavePathResult>("pick_save_path", {
     rootPath,
     defaultName,
+  }, {
+    domain: "document",
+    operation: "pick-save-path",
+    fallbackMessage: "暂时无法选择保存路径",
+    recoveryAction: "retry-save-document",
+    recoverable: true,
   });
 
   if (result.error?.code === "CANCELLED") {
@@ -100,7 +119,7 @@ export async function pickSavePath(
 
   return {
     cancelled: false,
-    error: result.error?.message || "保存路径选择失败",
+    error: result.error ?? undefined,
   };
 }
 
@@ -111,11 +130,17 @@ export async function saveDocumentAs(
   rootPath: string,
   targetPath: string,
   content: string,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: AppErrorPayload }> {
   const result = await invokeTauriCommand<DocumentSaveResult>("save_document_as", {
     rootPath,
     targetPath,
     content,
+  }, {
+    domain: "document",
+    operation: "save-document-as",
+    fallbackMessage: "暂时无法完成另存为",
+    recoveryAction: "retry-save-document",
+    recoverable: true,
   });
 
   if (result.success && result.data) {
@@ -123,6 +148,6 @@ export async function saveDocumentAs(
   }
   return {
     success: false,
-    error: result.error?.message || "另存为失败",
+    error: result.error ?? undefined,
   };
 }

@@ -3,7 +3,7 @@ import { render, fireEvent, screen } from "@testing-library/react";
 import StatusBar from "../StatusBar";
 
 describe("StatusBar retry (T39)", () => {
-  it('docStatus="保存失败: ..." + onRetrySave → renders clickable retry, click calls handler', () => {
+  it("retryable error status renders clickable retry, click calls handler", () => {
     const onRetrySave = vi.fn();
     render(
       <StatusBar
@@ -11,7 +11,12 @@ describe("StatusBar retry (T39)", () => {
         workspace={null}
         workspaceState="idle"
         fileCount={0}
-        docStatus="保存失败: 磁盘空间不足"
+        docStatus={{
+          label: "保存失败: 磁盘空间不足",
+          tone: "error",
+          retryable: true,
+          retryLabel: "重试保存",
+        }}
         viewMode="split-editor"
         documentTitle="test.md"
         onRetrySave={onRetrySave}
@@ -33,13 +38,17 @@ describe("StatusBar retry (T39)", () => {
         workspace={null}
         workspaceState="idle"
         fileCount={0}
-        docStatus="保存失败: 错误"
+        docStatus={{
+          label: "保存失败: 错误",
+          tone: "error",
+          retryable: false,
+        }}
         viewMode="split-editor"
         documentTitle="test.md"
       />,
     );
 
-    const el = screen.getByText((content) => content.startsWith("保存失败"));
+    const el = screen.getByText("保存失败: 错误");
     expect(el).toBeTruthy();
     // Click should not throw even without handler
     fireEvent.click(el);

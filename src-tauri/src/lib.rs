@@ -24,6 +24,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             health::health_check,
+            health::version_info,
             workspace::select_workspace,
             workspace::load_workspace,
             workspace::refresh_workspace_index,

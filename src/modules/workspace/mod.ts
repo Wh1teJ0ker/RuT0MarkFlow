@@ -25,6 +25,14 @@ export interface WorkspaceSelectionResult {
 export async function selectWorkspace(): Promise<WorkspaceSelectionResult> {
   const result = await invokeTauriCommand<WorkspaceLoadResult>(
     "select_workspace",
+    undefined,
+    {
+      domain: "workspace",
+      operation: "select-workspace",
+      fallbackMessage: "暂时无法加载工作区",
+      recoveryAction: "reselect-workspace",
+      recoverable: true,
+    },
   );
 
   if (result.success && result.data) {
@@ -65,6 +73,13 @@ export async function loadWorkspace(
   const result = await invokeTauriCommand<WorkspaceLoadResult>(
     "load_workspace",
     { rootPath },
+    {
+      domain: "workspace",
+      operation: "load-workspace",
+      fallbackMessage: "暂时无法加载工作区",
+      recoveryAction: "reselect-workspace",
+      recoverable: true,
+    },
   );
 
   if (result.success && result.data) {
@@ -95,6 +110,13 @@ export async function refreshWorkspaceIndex(
   const result = await invokeTauriCommand<WorkspaceLoadResult>(
     "refresh_workspace_index",
     { rootPath },
+    {
+      domain: "workspace",
+      operation: "refresh-workspace",
+      fallbackMessage: "暂时无法刷新工作区索引",
+      recoveryAction: "none",
+      recoverable: true,
+    },
   );
 
   if (result.success && result.data) {

@@ -1,5 +1,6 @@
 import { useCallback, useRef, useEffect } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { getAppErrorDisplay } from "../../services/tauri";
 import type { DocumentState, ViewMode } from "../../types";
 import FindBar from "./FindBar";
 
@@ -159,9 +160,9 @@ function ContentArea({
     );
   }
 
-// ── Document opening skeleton (must precede isNew, so opening
-	  //    takes priority over "new document" textarea) ────────────
-	  if (isOpening) {
+  // ── Document opening skeleton (must precede isNew, so opening
+  //    takes priority over "new document" textarea) ────────────
+  if (isOpening) {
     const title = openingPath || "正在打开…";
     const skeleton = (
       <div className="content-opening-skeleton">
@@ -204,53 +205,55 @@ function ContentArea({
         </div>
       </div>
     );
-}
+  }
 
-	  // ── New document (isNew) — only if !isOpening ──────────────
-	  if (document.isNew) {
-	    return (
-	      <div className="content-document">
-	        <div className="content-document-header">
-	          <span className="content-document-title">未命名文档</span>
-	          <span className="content-document-header-hint">新建 — 保存时将选择路径</span>
-	        </div>
-	        <textarea
-	          className="content-editor-textarea"
-	          value={document.content}
-	          onChange={(e) => onContentChange(e.target.value)}
-	          placeholder="输入 Markdown 内容后保存以落盘"
-	        />
-	      </div>
-	    );
-	  }
-
-	  // ── Workspace loaded, no document ──────────────────────────
-  if (!document.path) {
+  // ── Open error state ───────────────────────────────────────
+  if (document.openError) {
+    const errorDisplay = getAppErrorDisplay(document.openError);
     return (
       <div className="content-placeholder">
         <div className="content-placeholder-inner">
-          <p>请从左侧索引列表中选择一个文档打开</p>
+          <p className="content-error-text">{errorDisplay?.title ?? "文档打开失败"}</p>
+          <p className="content-placeholder-hint">
+            {errorDisplay?.description ?? document.openError.message}
+          </p>
+          {document.relativePath && errorDisplay?.canRetry && (
+            <button
+              className="content-retry-btn"
+              onClick={() => onOpenDocument(document.relativePath!)}
+            >
+              {errorDisplay.actionLabel}
+            </button>
+          )}
         </div>
       </div>
     );
   }
 
-  // ── Open error state ───────────────────────────────────────
-  if (document.openError) {
-    const isFileNotFound = document.openError.startsWith("文件不存在:");
+  // ── New document (isNew) — only if !isOpening ──────────────
+  if (document.isNew) {
+    return (
+      <div className="content-document">
+        <div className="content-document-header">
+          <span className="content-document-title">未命名文档</span>
+          <span className="content-document-header-hint">新建 — 保存时将选择路径</span>
+        </div>
+        <textarea
+          className="content-editor-textarea"
+          value={document.content}
+          onChange={(e) => onContentChange(e.target.value)}
+          placeholder="输入 Markdown 内容后保存以落盘"
+        />
+      </div>
+    );
+  }
+
+  // ── Workspace loaded, no document ──────────────────────────
+  if (!document.path) {
     return (
       <div className="content-placeholder">
         <div className="content-placeholder-inner">
-          <p className="content-error-text">文档打开失败</p>
-          <p className="content-placeholder-hint">{document.openError}</p>
-          {document.relativePath && (
-            <button
-              className="content-retry-btn"
-              onClick={() => onOpenDocument(document.relativePath!)}
-            >
-              {isFileNotFound ? "目标不存在，重新选择" : "重试打开"}
-            </button>
-          )}
+          <p>请从左侧索引列表中选择一个文档打开</p>
         </div>
       </div>
     );

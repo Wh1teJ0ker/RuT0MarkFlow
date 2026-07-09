@@ -13,9 +13,15 @@ const base = {
   workspace: null,
   workspaceState: "idle" as const,
   fileCount: 0,
-  docStatus: "",
+  docStatus: {
+    label: "",
+    tone: "default" as const,
+    retryable: false,
+  },
   viewMode: "split-editor" as const,
   documentTitle: null,
+  versionSummary: undefined,
+  versionDetails: undefined,
 };
 
 describe("StatusBar state display", () => {
@@ -58,5 +64,16 @@ describe("StatusBar state display", () => {
   it("shows render error count", () => {
     render(<StatusBar {...base} renderErrorCount={3} />);
     expect(screen.getByText("3 错误")).toBeTruthy();
+  });
+
+  it("shows version summary when provided", () => {
+    render(
+      <StatusBar
+        {...base}
+        versionSummary="App current · UI current · Core current"
+        versionDetails={"Release: current\nApp: current"}
+      />,
+    );
+    expect(screen.getByText("App current · UI current · Core current")).toBeTruthy();
   });
 });

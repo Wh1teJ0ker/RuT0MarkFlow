@@ -14,6 +14,7 @@
  *   PRESSURE_FILE_COUNT  — number of .md files to generate (default: 1000)
  *   PRESSURE_KEEP        — set to "1" to keep temp directory after test
  *   CARGO_FLAGS          — extra flags for cargo (e.g., "--release")
+ *   PRESSURE_SKIP_CLIPPY — set to "1" to skip the extra clippy pass
  */
 
 import { execSync } from "child_process";
@@ -29,6 +30,7 @@ const PROJECT_ROOT = resolve(__dirname, "..");
 const FILE_COUNT = parseInt(process.env.PRESSURE_FILE_COUNT || "1000", 10);
 const CARGO_FLAGS = process.env.CARGO_FLAGS || "";
 const KEEP = process.env.PRESSURE_KEEP === "1";
+const SKIP_CLIPPY = process.env.PRESSURE_SKIP_CLIPPY === "1";
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -199,11 +201,16 @@ async function main() {
   console.log(`Rust 测试通过: ${testOk ? "✅" : "❌"}`);
 
   // ── Step 5: Verify cargo clippy ──────────────────────────────────
-  console.log("正在运行 clippy 检查…");
-  const clippyOutput = run("cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings 2>&1", {
-    stdio: "pipe",
-  });
-  console.log(`Clippy: ${clippyOutput.includes("warning") ? "有警告" : "✅ 0 warnings"}`);
+  let clippyOutput = "";
+  if (SKIP_CLIPPY) {
+    console.log("跳过额外 clippy 检查 (PRESSURE_SKIP_CLIPPY=1)");
+  } else {
+    console.log("正在运行 clippy 检查…");
+    clippyOutput = run("cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings 2>&1", {
+      stdio: "pipe",
+    });
+    console.log(`Clippy: ${clippyOutput.includes("warning") ? "有警告" : "✅ 0 warnings"}`);
+  }
 
   // ── Conclusion ────────────────────────────────────────────────────
   console.log("");
@@ -267,7 +274,7 @@ async function main() {
     filesPerSec: results.files_per_sec ? parseFloat(results.files_per_sec) : null,
     workspaceSizeMb: results.workspace_size_mb ? parseFloat(results.workspace_size_mb) : null,
     testPassed: testOk,
-    clippyCleaned: !clippyOutput.includes("warning"),
+    clippyCleaned: SKIP_CLIPPY ? null : !clippyOutput.includes("warning"),
   };
 
   const reportPath = join(PROJECT_ROOT, "handoff", "pressure-test-report.json");

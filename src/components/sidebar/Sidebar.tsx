@@ -1,5 +1,6 @@
 import { Folder, FolderOpen, AlertCircle, Loader2, FileText, ArrowDownAZ } from "lucide-react";
 import { useState, useCallback } from "react";
+import { getAppErrorDisplay } from "../../services/tauri";
 import IndexTree from "./IndexTree";
 import type { WorkspaceInfo, WorkspaceState, AppErrorPayload, IndexTreeNode } from "../../types";
 
@@ -77,16 +78,21 @@ function Sidebar({
 
   // ── error: workspace load failed ────────────────────────────
   if (workspaceState === "error") {
+    const errorDisplay = getAppErrorDisplay(workspaceError);
     return (
       <div className="sidebar-placeholder">
         <AlertCircle size={32} className="sidebar-placeholder-icon" />
-        <p className="sidebar-placeholder-text">工作区加载失败</p>
-        <p className="sidebar-placeholder-hint">
-          {workspaceError?.message || "未知错误"}
+        <p className="sidebar-placeholder-text">
+          {errorDisplay?.title ?? "工作区加载失败"}
         </p>
-        <button className="sidebar-retry-btn" onClick={onSelectWorkspace}>
-          重新选择工作区
-        </button>
+        <p className="sidebar-placeholder-hint">
+          {errorDisplay?.description ?? workspaceError?.message ?? "未知错误"}
+        </p>
+        {errorDisplay?.canRetry && (
+          <button className="sidebar-retry-btn" onClick={onSelectWorkspace}>
+            {errorDisplay.actionLabel}
+          </button>
+        )}
       </div>
     );
   }

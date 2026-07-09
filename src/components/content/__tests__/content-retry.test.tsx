@@ -17,7 +17,19 @@ describe("ContentArea retry (T39)", () => {
 
   it("openError + relativePath → renders retry button, click calls onOpenDocument", () => {
     const onOpenDocument = vi.fn();
-    const doc = { ...baseDoc, openError: "文件无法读取", relativePath: "doc.md", path: "/ws/doc.md" };
+    const doc = {
+      ...baseDoc,
+      openError: {
+        code: "DOCUMENT_OPEN_FAILED",
+        message: "文件无法读取",
+        recoverable: true,
+        domain: "document" as const,
+        operation: "open-document" as const,
+        recoveryAction: "retry-open-document" as const,
+      },
+      relativePath: "doc.md",
+      title: "doc.md",
+    };
 
     render(
       <ContentArea
@@ -32,14 +44,26 @@ describe("ContentArea retry (T39)", () => {
       />,
     );
 
-    const btn = screen.getByText("重试打开");
+    const btn = screen.getByText("重试打开文档");
     expect(btn).toBeTruthy();
     fireEvent.click(btn);
     expect(onOpenDocument).toHaveBeenCalledWith("doc.md");
   });
 
-  it('openError starts with "文件不存在:" → button text is "目标不存在，重新选择"', () => {
-    const doc = { ...baseDoc, openError: "文件不存在: foo.md", relativePath: "doc.md", path: "/ws/doc.md" };
+  it("recoverable openError uses unified title and description", () => {
+    const doc = {
+      ...baseDoc,
+      openError: {
+        code: "DOCUMENT_OPEN_FAILED",
+        message: "文件不存在或无法读取",
+        recoverable: true,
+        domain: "document" as const,
+        operation: "open-document" as const,
+        recoveryAction: "retry-open-document" as const,
+      },
+      relativePath: "doc.md",
+      title: "doc.md",
+    };
 
     render(
       <ContentArea
@@ -54,11 +78,25 @@ describe("ContentArea retry (T39)", () => {
       />,
     );
 
-    expect(screen.getByText("目标不存在，重新选择")).toBeTruthy();
+    expect(screen.getByText("文档打开失败")).toBeTruthy();
+    expect(screen.getByText("文件不存在或无法读取")).toBeTruthy();
+    expect(screen.getByText("重试打开文档")).toBeTruthy();
   });
 
-  it("openError + relativePath=null → no retry button", () => {
-    const doc = { ...baseDoc, openError: "文件无法读取", relativePath: null, path: "/ws/doc.md" };
+  it("non-recoverable openError or missing relativePath → no retry button", () => {
+    const doc = {
+      ...baseDoc,
+      openError: {
+        code: "DOCUMENT_OPEN_FAILED",
+        message: "权限不足",
+        recoverable: false,
+        domain: "document" as const,
+        operation: "open-document" as const,
+        recoveryAction: "none" as const,
+      },
+      relativePath: null,
+      title: "doc.md",
+    };
 
     render(
       <ContentArea
@@ -73,7 +111,6 @@ describe("ContentArea retry (T39)", () => {
       />,
     );
 
-    expect(screen.queryByText("重试打开")).toBeNull();
-    expect(screen.queryByText("目标不存在，重新选择")).toBeNull();
+    expect(screen.queryByText("重试打开文档")).toBeNull();
   });
 });

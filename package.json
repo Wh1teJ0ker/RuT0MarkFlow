@@ -1,7 +1,7 @@
 {
   "name": "rut0markflow",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
-    "version:check": "node scripts/check-version-sync.mjs"
+    "version:check": "node scripts/check-version-sync.mjs",
+    "pressure:test": "node scripts/pressure-test-workspace.mjs",
+    "repo:check": "node scripts/check-repo-hygiene.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",

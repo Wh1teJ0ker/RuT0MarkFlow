@@ -5,7 +5,13 @@ import Toolbar from "../components/toolbar/Toolbar";
 import Sidebar from "../components/sidebar/Sidebar";
 import ContentArea from "../components/content/ContentArea";
 import StatusBar from "../components/statusbar/StatusBar";
+import { VERSION_DETAILS, VERSION_SUMMARY } from "../version";
 import { UnsavedConfirmDialog } from "../components/dialogs";
+import {
+  getAppErrorDisplay,
+  getDocumentStatusDescriptor,
+  withAppErrorContext,
+} from "../services/tauri";
 import { selectWorkspace, refreshWorkspaceIndex, loadWorkspace, loadAppSettings, saveAppSettings } from "../modules/workspace/mod";
 import {
   openDocument,
@@ -28,21 +34,6 @@ import {
   IndexChangedPayload,
 } from "../types";
 
-function docStatusLabel(
-  isDirty: boolean,
-  isSaving: boolean,
-  hasDoc: boolean,
-  isNew: boolean,
-  saveError: string | null,
-): string {
-  if (saveError) return `保存失败: ${saveError}`;
-  if (isSaving) return "正在保存…";
-  if (isNew) return "新建文档（未保存）";
-  if (isDirty) return "未保存";
-  if (hasDoc) return "已保存";
-  return "";
-}
-
 function App() {
   // ── Workspace state ──────────────────────────────────────────
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>("idle");
@@ -62,7 +53,7 @@ function App() {
     isSaving: false,
     isNew: false,
   });
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<AppErrorPayload | null>(null);
 
   // ── Unsaved confirm dialog ─────────────────────────────────────
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -231,14 +222,20 @@ function App() {
 
       const wsResult = await loadWorkspace(wsPath);
       if (wsResult.state !== "ready" || !wsResult.workspace) {
-        // Item E: Restore failure → show error state so Sidebar renders
-        // "重新选择工作区" button (P1 T39 implementation).
+        const restoreError = withAppErrorContext(wsResult.error, {
+          domain: "workspace",
+          operation: "restore-workspace",
+          fallbackMessage: "最近工作区不可用",
+          recoveryAction: "reselect-workspace",
+          recoverable: true,
+        });
+        const restoreDisplay = getAppErrorDisplay(restoreError);
         setWorkspaceState("error");
-        setWorkspaceError({ code: "RESTORE_FAILED", message: "最近工作区不可用", recoverable: true });
+        setWorkspaceError(restoreError);
         setWorkspace(null);
         setFileCount(0);
         setIndexTree([]);
-        setStatusMessage("最近工作区不可用，已跳过恢复");
+        setStatusMessage(restoreDisplay?.statusMessage ?? "工作区恢复失败");
         // Persist the cleared path
         const updated: AppSettings = {
           ...settings,
@@ -253,6 +250,7 @@ function App() {
       // Workspace restored successfully
       setWorkspaceState("ready");
       setWorkspace(wsResult.workspace);
+      setWorkspaceError(null);
       setFileCount(wsResult.fileCount);
       setIndexTree(wsResult.indexTree);
       setStatusMessage(`已恢复工作区: ${wsResult.workspace.displayName}`);
@@ -265,11 +263,14 @@ function App() {
       }
 
       const docResult = await openDocument(wsPath, docRelPath);
+      setDocument(docResult.state);
       if (!docResult.error) {
-        setDocument(docResult.state);
         setStatusMessage(`已恢复工作区与文档: ${docResult.state.title}`);
       } else {
-        setStatusMessage(`已恢复工作区（文档 ${docRelPath} 不可用）`);
+        const docDisplay = getAppErrorDisplay(docResult.error);
+        setStatusMessage(
+          `已恢复工作区，${docDisplay?.statusMessage ?? "文档打开失败"}`,
+        );
       }
 
       // All restore operations complete — allow persistence saves now
@@ -298,9 +299,16 @@ function App() {
     const result = await refreshWorkspaceIndex(workspace.rootPath);
     if (result.state === "ready") {
       setWorkspaceState("ready");
+      setWorkspaceError(null);
       setWorkspace(result.workspace);
       setFileCount(result.fileCount);
       setIndexTree(result.indexTree);
+      return;
+    }
+
+    if (result.error) {
+      const errorDisplay = getAppErrorDisplay(result.error);
+      setStatusMessage(errorDisplay?.statusMessage ?? "工作区刷新失败");
     }
   }, [workspace]);
 
@@ -373,9 +381,16 @@ function App() {
       return true;
     } else {
       setDocument((prev) => ({ ...prev, isSaving: false }));
-      const errMsg = result.error || "保存失败";
-      setSaveError(errMsg);
-      setStatusMessage(`保存失败: ${errMsg}`);
+      const error = result.error ?? withAppErrorContext(null, {
+        domain: "document",
+        operation: "save-document",
+        fallbackMessage: "暂时无法保存当前文档",
+        recoveryAction: "retry-save-document",
+        recoverable: true,
+      });
+      const errorDisplay = getAppErrorDisplay(error);
+      setSaveError(error);
+      setStatusMessage(errorDisplay?.statusMessage ?? "保存失败");
       return false;
     }
   }, [workspace, document]);
@@ -389,8 +404,17 @@ function App() {
       : document.title || "document.md";
 
     const picked = await pickSavePath(workspace.rootPath, defaultName);
-    if (picked.cancelled) { setStatusMessage("已取消另存为"); return false; }
-    if (picked.error) { setStatusMessage(`路径选择失败: ${picked.error}`); return false; }
+    if (picked.cancelled) {
+      setSaveError(null);
+      setStatusMessage("已取消另存为");
+      return false;
+    }
+    if (picked.error) {
+      const errorDisplay = getAppErrorDisplay(picked.error);
+      setSaveError(picked.error);
+      setStatusMessage(errorDisplay?.statusMessage ?? "保存路径选择失败");
+      return false;
+    }
     if (!picked.path) return false;
 
     const targetPath = picked.path.absolutePath;
@@ -424,8 +448,16 @@ function App() {
       return true;
     } else {
       setDocument((prev) => ({ ...prev, isSaving: false }));
-      setSaveError(result.error || "另存为失败");
-      setStatusMessage(`另存为失败: ${result.error}`);
+      const error = result.error ?? withAppErrorContext(null, {
+        domain: "document",
+        operation: "save-document-as",
+        fallbackMessage: "暂时无法完成另存为",
+        recoveryAction: "retry-save-document",
+        recoverable: true,
+      });
+      const errorDisplay = getAppErrorDisplay(error);
+      setSaveError(error);
+      setStatusMessage(errorDisplay?.statusMessage ?? "另存为失败");
       return false;
     }
   }, [workspace, document.content, document.isNew, document.title, refreshIndex]);
@@ -508,7 +540,8 @@ function App() {
     if (result.state === "ready" && result.workspace) {
       setStatusMessage(`已加载工作区: ${result.workspace.displayName}（${result.fileCount} 个 Markdown 文件）`);
     } else if (result.state === "error" && result.error) {
-      setStatusMessage(`工作区加载失败: ${result.error.message}`);
+      const errorDisplay = getAppErrorDisplay(result.error);
+      setStatusMessage(errorDisplay?.statusMessage ?? "工作区加载失败");
     } else {
       setStatusMessage("就绪");
     }
@@ -554,7 +587,12 @@ function App() {
       history.clear();
       setDocument(result.state);
       setSaveError(null);
-      setStatusMessage(result.error ? `文档打开失败: ${result.error}` : `已打开: ${result.state.title}`);
+      if (result.error) {
+        const errorDisplay = getAppErrorDisplay(result.error);
+        setStatusMessage(errorDisplay?.statusMessage ?? "文档打开失败");
+      } else {
+        setStatusMessage(`已打开: ${result.state.title}`);
+      }
     },
     [workspace, document.isDirty, document.relativePath, document.path, document.openError],
   );
@@ -657,89 +695,102 @@ function App() {
 
   // ── Derived state ───────────────────────────────────────────
   const hasWorkspace = workspaceState === "ready";
-  const hasDocument = document.path !== null || document.isNew;
+  const hasDocument = document.path !== null || document.isNew || Boolean(document.openError);
   const isLoading = workspaceState === "loading";
   const renderErrorCount =
-      renderErrorsRef.current.length +
-      imageErrors.length +
-      mathErrors.length;
+    renderErrorsRef.current.length +
+    imageErrors.length +
+    mathErrors.length;
+  const docStatus = getDocumentStatusDescriptor({
+    isDirty: document.isDirty,
+    isSaving: document.isSaving,
+    hasDocument,
+    isNew: document.isNew,
+    saveError,
+  });
+  const handleRetrySave =
+    saveError?.operation === "save-document"
+      ? handleSaveDocument
+      : saveError?.operation
+        ? handleSaveAs
+        : undefined;
 
   // ── Render ──────────────────────────────────────────────────
   return (
     <>
-    <MainLayout
-      toolbar={
-        <Toolbar
-          viewMode={viewMode}
-          onViewModeChange={handleViewModeChange}
-          onSelectWorkspace={handleSelectWorkspace}
-          onSave={handleSaveDocument}
-          onSaveAs={handleSaveAs}
-          onNewDocument={handleNewDocument}
-          onCloseDocument={handleCloseDocument}
-          hasWorkspace={hasWorkspace}
-          hasDocument={hasDocument}
-          isDirty={document.isDirty}
-          isLoading={isLoading}
-          isSaving={document.isSaving}
-          isNew={document.isNew}
-          workspaceState={workspaceState}
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
-        />
-      }
-      sidebar={
-        <Sidebar
-          workspace={workspace}
-          workspaceState={workspaceState}
-          workspaceError={workspaceError}
-          fileCount={fileCount}
-          indexTree={indexTree}
-          onOpenDocument={handleOpenDocument}
-          activeDocumentRelativePath={document.relativePath}
-          onSelectWorkspace={handleSelectWorkspace}
-        />
-      }
-      content={
-        <ContentArea
-          document={document}
-          viewMode={viewMode}
-          hasWorkspace={hasWorkspace}
-          onContentChange={handleContentChange}
-          renderedHtml={renderedHtml}
-          isRenderPending={isRenderPending}
-          hasRenderErrors={renderErrorCount > 0}
-          onOpenDocument={handleOpenDocument}
-          onImageError={(src) => {
-            reportImageError(src);
-          }}
-          isOpening={isDocumentOpening}
-          openingPath={pendingDocumentPath}
-          onRetryImage={handleRetryImage}
-          isFindBarOpen={isFindBarOpen}
-          onCloseFindBar={() => setIsFindBarOpen(false)}
-        />
-      }
-      statusBar={
-        <StatusBar
-          message={statusMessage}
-          workspace={workspace}
-          workspaceState={workspaceState}
-          fileCount={fileCount}
-          docStatus={docStatusLabel(
-            document.isDirty, document.isSaving, hasDocument, document.isNew, saveError,
-          )}
-          renderErrorCount={renderErrorCount}
-          viewMode={viewMode}
-          documentTitle={document.title}
-          onRetrySave={saveError ? handleSaveDocument : undefined}
-        />
-      }
-    />
-    <UnsavedConfirmDialog
-      open={isConfirmOpen}
-      onAction={handleConfirmAction}
-    />
+      <MainLayout
+        toolbar={
+          <Toolbar
+            viewMode={viewMode}
+            onViewModeChange={handleViewModeChange}
+            onSelectWorkspace={handleSelectWorkspace}
+            onSave={handleSaveDocument}
+            onSaveAs={handleSaveAs}
+            onNewDocument={handleNewDocument}
+            onCloseDocument={handleCloseDocument}
+            hasWorkspace={hasWorkspace}
+            hasDocument={hasDocument}
+            isDirty={document.isDirty}
+            isLoading={isLoading}
+            isSaving={document.isSaving}
+            isNew={document.isNew}
+            workspaceState={workspaceState}
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+          />
+        }
+        sidebar={
+          <Sidebar
+            workspace={workspace}
+            workspaceState={workspaceState}
+            workspaceError={workspaceError}
+            fileCount={fileCount}
+            indexTree={indexTree}
+            onOpenDocument={handleOpenDocument}
+            activeDocumentRelativePath={document.relativePath}
+            onSelectWorkspace={handleSelectWorkspace}
+          />
+        }
+        content={
+          <ContentArea
+            document={document}
+            viewMode={viewMode}
+            hasWorkspace={hasWorkspace}
+            onContentChange={handleContentChange}
+            renderedHtml={renderedHtml}
+            isRenderPending={isRenderPending}
+            hasRenderErrors={renderErrorCount > 0}
+            onOpenDocument={handleOpenDocument}
+            onImageError={(src) => {
+              reportImageError(src);
+            }}
+            isOpening={isDocumentOpening}
+            openingPath={pendingDocumentPath}
+            onRetryImage={handleRetryImage}
+            isFindBarOpen={isFindBarOpen}
+            onCloseFindBar={() => setIsFindBarOpen(false)}
+          />
+        }
+        statusBar={
+          <StatusBar
+            message={statusMessage}
+            workspace={workspace}
+            workspaceState={workspaceState}
+            fileCount={fileCount}
+            docStatus={docStatus}
+            renderErrorCount={renderErrorCount}
+            viewMode={viewMode}
+            documentTitle={document.title}
+            versionSummary={VERSION_SUMMARY}
+            versionDetails={VERSION_DETAILS}
+            onRetrySave={handleRetrySave}
+          />
+        }
+      />
+      <UnsavedConfirmDialog
+        open={isConfirmOpen}
+        onAction={handleConfirmAction}
+      />
     </>
   );
 }

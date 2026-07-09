@@ -479,6 +479,10 @@ body,
   text-overflow: ellipsis;
 }
 
+.statusbar-version {
+  max-width: 280px;
+}
+
 .statusbar-segment-icon {
   flex-shrink: 0;
 }
