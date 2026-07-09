@@ -5,6 +5,7 @@ node_modules/
 dist/
 tsconfig.tsbuildinfo
 index.js
+handoff/
 
 # Rust build
 src-tauri/target/
