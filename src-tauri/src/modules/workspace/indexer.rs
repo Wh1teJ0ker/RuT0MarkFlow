@@ -3,6 +3,19 @@ use crate::models::workspace::{IndexEntry, IndexTreeNode};
 
 /// Build a sorted `IndexTreeNode` tree from a flat list of `IndexEntry` items.
 ///
+/// ## Path separator assumption
+///
+/// **IMPORTANT**: This function and its helper `build_children` assume that all
+/// `parent_relative_path` and `relative_path` fields use forward slashes (`/`)
+/// as the path separator. This is enforced by the `normalize_sep` call in
+/// `commands/workspace.rs` (the `build_workspace_result` path) and
+/// `commands/workspace.rs:run_scan`. Any new entry point that constructs
+/// `IndexEntry` values with relative paths **must** also call `normalize_sep`
+/// (or equivalent) to convert backslashes to forward slashes before passing
+/// them to `build_index_tree`; otherwise the `split('/')` / `contains('/')` /
+/// `rsplit('/')` calls in this file will fail to detect directory boundaries
+/// on Windows.
+///
 /// Algorithm:
 /// 1. Collect all unique directory paths from entries' `parent_relative_path`.
 /// 2. Group entries by their parent directory.

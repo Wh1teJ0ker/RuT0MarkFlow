@@ -198,4 +198,30 @@ describe("splitMarkdown", () => {
     expect(result.length).toBeGreaterThanOrEqual(5);
     expect(result.join("")).toBe(content);
   });
+
+  it("handles CRLF line endings — \\r\\n normalized by caller before splitMarkdown", () => {
+    // splitMarkdown itself doesn't normalize CRLF; the caller
+    // (renderMarkdown in index.ts) normalizes at the entry point.
+    // This test verifies that if \r\n content reaches splitMarkdown,
+    // the \r characters are preserved in chunks (not stripped).
+    const content = "Line1\r\n\r\nLine2\r\n\r\nLine3";
+    const result = splitMarkdown(content, 5);
+    expect(result.length).toBeGreaterThanOrEqual(1);
+    // \r characters should be preserved (caller strips them before calling)
+    expect(result.join("")).toBe(content);
+  });
+
+  it("CRLF normalization at renderMarkdown entry — \\r\\n becomes \\n", async () => {
+    // This tests the renderMarkdown pipeline entry normalization.
+    // Import renderMarkdown and verify \r\n is converted to \n.
+    const { renderMarkdown } = await import("../index");
+    const result = renderMarkdown("Hello\r\n\r\nWorld\r\n- Item 1\r\n- Item 2");
+    // The rendered HTML should not contain \r characters
+    expect(result.html).not.toContain("\r");
+    // Output should have correct structure
+    expect(result.html).toContain("<p>Hello</p>");
+    expect(result.html).toContain("<p>World</p>");
+    expect(result.html).toContain("<li>Item 1</li>");
+    expect(result.html).toContain("<li>Item 2</li>");
+  });
 });

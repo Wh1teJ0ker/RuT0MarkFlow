@@ -61,7 +61,7 @@ pnpm tauri build -- --no-sign
 ## 测试命令
 
 ```bash
-pnpm version:check -- --tag v0.1.1
+pnpm version:check -- --tag v0.1.2
 pnpm repo:check
 pnpm test
 pnpm build
@@ -70,13 +70,13 @@ cargo test --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
-发布其他版本时，将 `v0.1.1` 替换为对应的 Git tag。
+发布其他版本时，将 `v0.1.2` 替换为对应的 Git tag。
 
 ## Release 产物说明
 
 - GitHub Release 会继续发布 Tauri 常规 bundle，命名模式为 `[name]_[version]_[platform]_[arch]_[bundle][setup][ext]`。
 - Windows 额外发布独立便携版资产，命名模式为 `[name]_[version]_[platform]_[arch]_portable[ext]`。
-- 当前便携版资产示例：`RuT0MarkFlow_0.1.1_windows_x64_portable.exe`。
+- 当前便携版资产示例：`RuT0MarkFlow_0.1.2_windows_x64_portable.exe`。
 - 常规 bundle 适合安装分发；便携版适合直接下载运行，但仍依赖目标机器具备对应平台运行时。
 
 ## License

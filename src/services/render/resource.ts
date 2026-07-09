@@ -105,6 +105,11 @@ export function resolveResources(
 /**
  * Resolve a relative path against the document directory, returning
  * an absolute filesystem path.
+ *
+ * On Windows, rootPath may contain backslashes (e.g. `C:\Users\foo`).
+ * This function normalizes all backslashes to forward slashes so the
+ * returned path is compatible with `convertFileSrc` and the webview
+ * asset protocol.
  */
 function resolveRelativePath(
   src: string,
@@ -113,7 +118,12 @@ function resolveRelativePath(
 ): string | null {
   if (!rootPath) return null;
 
-  const base = documentDir ? `${rootPath}/${documentDir}` : rootPath;
-  const joined = `${base}/${src}`;
+  // Normalize backslashes to forward slashes (Windows compat)
+  const normalizedRoot = rootPath.replace(/\\/g, "/");
+  const normalizedDocDir = documentDir.replace(/\\/g, "/");
+  const normalizedSrc = src.replace(/\\/g, "/");
+
+  const base = normalizedDocDir ? `${normalizedRoot}/${normalizedDocDir}` : normalizedRoot;
+  const joined = `${base}/${normalizedSrc}`;
   return joined.replace(/\/+/g, "/");
 }

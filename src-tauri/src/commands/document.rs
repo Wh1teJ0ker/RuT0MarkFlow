@@ -38,18 +38,24 @@ pub async fn open_document(
             content: doc.content,
             updated_at: doc.updated_at,
         }),
-        Ok(Err(msg)) => CommandResponse::error(
-            "DOCUMENT_OPEN_FAILED",
-            &msg,
-            Some(format!("{}/{}", root_path, relative_path)),
-            true,
-        ),
-        Err(_) => CommandResponse::error(
-            "DOCUMENT_OPEN_FAILED",
-            "读取文档时线程异常",
-            Some(format!("{}/{}", root_path, relative_path)),
-            true,
-        ),
+        Ok(Err(msg)) => {
+            let detail = std::path::Path::new(&root_path).join(&relative_path);
+            CommandResponse::error(
+                "DOCUMENT_OPEN_FAILED",
+                &msg,
+                Some(detail.to_string_lossy().to_string()),
+                true,
+            )
+        },
+        Err(_) => {
+            let detail = std::path::Path::new(&root_path).join(&relative_path);
+            CommandResponse::error(
+                "DOCUMENT_OPEN_FAILED",
+                "读取文档时线程异常",
+                Some(detail.to_string_lossy().to_string()),
+                true,
+            )
+        },
     }
 }
 
@@ -66,12 +72,15 @@ pub fn save_document(
             updated_at: result.updated_at,
             content_hash: result.content_hash,
         }),
-        Err(msg) => CommandResponse::error(
-            "DOCUMENT_SAVE_FAILED",
-            &msg,
-            Some(format!("{}/{}", root_path, relative_path)),
-            true,
-        ),
+        Err(msg) => {
+            let detail = std::path::Path::new(&root_path).join(&relative_path);
+            CommandResponse::error(
+                "DOCUMENT_SAVE_FAILED",
+                &msg,
+                Some(detail.to_string_lossy().to_string()),
+                true,
+            )
+        },
     }
 }
 

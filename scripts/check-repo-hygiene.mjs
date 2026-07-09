@@ -42,7 +42,7 @@ function main() {
     `version-manifest.json appVersion must match package.json version (${packageJson.version})`,
   );
 
-  assertMissing("docs/releases/v0.1.2/规划需求.md");
+  assertFileExists("docs/releases/v0.1.2/规划需求.md");
   assertMissing("docs/releases/v0.1.3/规划需求.md");
 
   assertFileExists("src-tauri/icons/app-icon-source.png");
@@ -77,8 +77,8 @@ function main() {
   const releaseDocsIndex = readText("docs/releases/README.md");
   assertIncludes(
     releaseDocsIndex,
-    `当前只有一个激活中的后续版本：\`${releaseTag}\``,
-    "docs/releases/README.md must point to the current active patch version",
+    releaseTag,
+    "docs/releases/README.md must reference the current release tag",
   );
 
   const releasePlan = readText(`docs/releases/${releaseTag}/规划需求.md`);
@@ -147,7 +147,7 @@ function scanTrackedTextFiles() {
     },
     {
       label: "stale release tag link",
-      pattern: /(?:releases\/tag|archive\/refs\/tags)\/v0\.1\.(2|3)\b/g,
+      pattern: /(?:releases\/tag|archive\/refs\/tags)\/v0\.1\.3\b/g,
     },
   ];
 

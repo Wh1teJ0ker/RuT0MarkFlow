@@ -39,8 +39,16 @@ export function renderMarkdown(
     return { html: "", errors, hasDegradedBlocks: false, imageErrors, mathErrors };
   }
 
+  // ── Step 0: Normalize CRLF → LF ─────────────────────────────
+  // Windows files use \r\n line endings; marked's breaks:true converts
+  // \n to <br>, but residual \r causes rendering artifacts (extra spaces,
+  // odd <br> placement). Normalize once at the render entry point so all
+  // downstream consumers (chunker, marked, KaTeX) see consistent line endings.
+  // save (writer.rs) writes content as-is, preserving the user's original
+  // line ending convention — we only normalize for rendering.
+  let processed = content.replace(/\r\n/g, "\n");
+
   // ── Step 1: Pre-process math ────────────────────────────────
-  let processed = content;
   let mathPlaceholders: { placeholder: string; formula: string; display: boolean }[] = [];
 
   try {

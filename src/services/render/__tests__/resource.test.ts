@@ -69,4 +69,45 @@ describe("resolveResources", () => {
     // No rootPath → unresolvable
     expect(result.imageErrors.length).toBeGreaterThanOrEqual(1);
   });
+
+  it("normalizes Windows backslashes in rootPath", () => {
+    const html = '<img src="image.png" />';
+    const result = resolveResources(html, {
+      documentDir: "docs\\sub",
+      rootPath: "C:\\Projects\\ws",
+    });
+    // Backslashes should be normalized to forward slashes in the src attribute
+    expect(result.html).toContain("C:/Projects/ws/docs/sub/image.png");
+    // The src attribute path should not contain backslashes (but onerror handler
+    // may contain escaped quotes like \' which are not path separators)
+    const srcMatch = result.html.match(/src="([^"]+)"/);
+    expect(srcMatch).not.toBeNull();
+    expect(srcMatch![1]).not.toContain("\\");
+    expect(result.imageErrors).toHaveLength(0);
+  });
+
+  it("normalizes Windows backslashes in documentDir", () => {
+    const html = '<img src="img.png" />';
+    const result = resolveResources(html, {
+      documentDir: "docs\\子目录",
+      rootPath: "D:\\ws",
+    });
+    expect(result.html).toContain("D:/ws/docs/子目录/img.png");
+    const srcMatch = result.html.match(/src="([^"]+)"/);
+    expect(srcMatch).not.toBeNull();
+    expect(srcMatch![1]).not.toContain("\\");
+  });
+
+  it("handles mixed backslash/forwardslash paths", () => {
+    const html = '<img src="sub\\img.png" />';
+    const result = resolveResources(html, {
+      documentDir: "docs",
+      rootPath: "C:\\Projects\\ws",
+    });
+    // All path separators should be forward slashes
+    expect(result.html).toContain("C:/Projects/ws/docs/sub/img.png");
+    const srcMatch = result.html.match(/src="([^"]+)"/);
+    expect(srcMatch).not.toBeNull();
+    expect(srcMatch![1]).not.toContain("\\");
+  });
 });

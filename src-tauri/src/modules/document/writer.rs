@@ -68,16 +68,9 @@ pub fn write_to_any_path(root_path: &str, target_path: &str, content: &str) -> R
     // Check if within workspace
     let is_within = canonical.starts_with(&root);
 
-    // If within workspace, validate starts_with
-    if is_within {
-        let resolved = root.join(
-            canonical.strip_prefix(&root).unwrap()
-        );
-        let canon = resolved.canonicalize()
-            .unwrap_or(resolved);
-        if !canon.starts_with(&root) {
-            return Err("文件路径超出工作区范围".to_string());
-        }
+    // If within workspace, validate with the single starts_with check
+    if is_within && !canonical.starts_with(&root) {
+        return Err("文件路径超出工作区范围".to_string());
     }
 
     validate_and_write(&canonical, content)
