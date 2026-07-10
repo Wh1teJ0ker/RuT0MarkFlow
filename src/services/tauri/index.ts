@@ -42,12 +42,16 @@ const ERROR_TITLES: Record<AppErrorOperation, string> = {
   "restore-workspace": "工作区恢复失败",
   "refresh-workspace": "工作区刷新失败",
   "invoke-command": "应用操作失败",
+  "check-update": "检查更新失败",
+  "install-update": "更新安装失败",
 };
 
 const RECOVERY_LABELS: Record<AppRecoveryAction, string | null> = {
   "retry-open-document": "重试打开文档",
   "retry-save-document": "重试保存",
   "reselect-workspace": "重新选择工作区",
+  "retry-check-update": "重试检查更新",
+  "retry-install-update": "重试安装更新",
   none: null,
 };
 

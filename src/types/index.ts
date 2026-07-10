@@ -143,12 +143,16 @@ export type AppErrorOperation =
   | "load-workspace"
   | "restore-workspace"
   | "refresh-workspace"
-  | "invoke-command";
+  | "invoke-command"
+  | "check-update"
+  | "install-update";
 
 export type AppRecoveryAction =
   | "retry-open-document"
   | "retry-save-document"
   | "reselect-workspace"
+  | "retry-check-update"
+  | "retry-install-update"
   | "none";
 
 export interface AppErrorDisplay {
@@ -172,6 +176,28 @@ export interface HealthCheckResult {
   status: string;
   version: string;
 }
+
+// ── Updater types ───────────────────────────────────────────────
+
+export interface UpdateCheckResult {
+  available: boolean;
+  version?: string;
+  notes?: string;
+  date?: string;
+}
+
+export interface UpdateInstallResult {
+  success: boolean;
+  restarted: boolean;
+}
+
+export type UpdateStatus =
+  | { type: "idle" }
+  | { type: "checking" }
+  | { type: "available"; version: string; notes?: string; date?: string }
+  | { type: "installing" }
+  | { type: "error"; message: string }
+  | { type: "unavailable" };
 
 export interface VersionInfo {
   releaseTag: string;

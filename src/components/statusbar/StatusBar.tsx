@@ -1,9 +1,10 @@
-import { Folder, File, Monitor, Save, AlertTriangle, RefreshCw, AlertCircle, RotateCcw, Layers3 } from "lucide-react";
+import { Folder, File, Monitor, Save, AlertTriangle, RefreshCw, AlertCircle, RotateCcw, Layers3, ArrowUpCircle } from "lucide-react";
 import type {
   DocumentStatusDescriptor,
   WorkspaceInfo,
   WorkspaceState,
   ViewMode,
+  UpdateStatus,
 } from "../../types";
 
 interface StatusBarProps {
@@ -18,6 +19,9 @@ interface StatusBarProps {
   versionSummary?: string;
   versionDetails?: string;
   onRetrySave?: () => void;
+  updateStatus?: UpdateStatus;
+  onCheckForUpdates?: () => void;
+  onInstallUpdate?: () => void;
 }
 
 function StatusBar({
@@ -32,8 +36,16 @@ function StatusBar({
   versionSummary,
   versionDetails,
   onRetrySave,
+  updateStatus,
+  onCheckForUpdates,
+  onInstallUpdate,
 }: StatusBarProps) {
   const isError = workspaceState === "error";
+
+  const isChecking = updateStatus?.type === "checking";
+  const isInstalling = updateStatus?.type === "installing";
+  const updateAvailable = updateStatus?.type === "available";
+  const updateVersion = updateAvailable ? updateStatus.version : null;
 
   const viewModeLabel = viewMode === "immersive-preview" ? "沉浸预览" : "双栏编辑";
   const indexLabel = workspaceState === "loading" ? "扫描中…" :
@@ -107,6 +119,32 @@ function StatusBar({
         <span className="statusbar-segment statusbar-version" title={versionDetails ?? versionSummary}>
           <Layers3 size={11} className="statusbar-segment-icon" />
           {versionSummary}
+        </span>
+      )}
+
+      {/* ── Update available indicator ──────────────────────────── */}
+      {updateAvailable && updateVersion && (
+        <span
+          className="statusbar-segment statusbar-segment--clickable"
+          onClick={onInstallUpdate}
+          role="button"
+          title={`点击安装更新 v${updateVersion}`}
+        >
+          <ArrowUpCircle size={11} className="statusbar-segment-icon" />
+          有新版本 v{updateVersion}
+        </span>
+      )}
+
+      {/* ── Check for updates ──────────────────────────────────── */}
+      {onCheckForUpdates && (
+        <span
+          className="statusbar-segment statusbar-segment--clickable"
+          onClick={isChecking || isInstalling ? undefined : onCheckForUpdates}
+          role="button"
+          title={isChecking ? "正在检查更新…" : "检查更新"}
+        >
+          <RefreshCw size={11} className={`statusbar-segment-icon ${isChecking ? "icon-spin" : ""}`} />
+          {isChecking ? "检查中…" : isInstalling ? "安装中…" : "检查更新"}
         </span>
       )}
 

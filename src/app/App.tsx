@@ -19,6 +19,7 @@ import {
   pickSavePath,
   saveDocumentAs,
 } from "../modules/document/mod";
+import { checkForUpdates, installUpdate } from "../services/updater/mod";
 import { useRender } from "../modules/render/mod";
 import { useEditorHistory } from "../hooks/useEditorHistory";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -32,6 +33,7 @@ import {
   AppSettings,
   DialogAction,
   IndexChangedPayload,
+  UpdateStatus,
 } from "../types";
 
 function App() {
@@ -54,6 +56,9 @@ function App() {
     isNew: false,
   });
   const [saveError, setSaveError] = useState<AppErrorPayload | null>(null);
+
+  // ── Update state ────────────────────────────────────────────────
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ type: "idle" });
 
   // ── Unsaved confirm dialog ─────────────────────────────────────
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -311,6 +316,43 @@ function App() {
       setStatusMessage(errorDisplay?.statusMessage ?? "工作区刷新失败");
     }
   }, [workspace]);
+
+  // ── Startup: auto-check for updates (mount-once, silent failure) ─
+  const updateCheckAttemptedRef = useRef(false);
+
+  useEffect(() => {
+    if (updateCheckAttemptedRef.current) return;
+    updateCheckAttemptedRef.current = true;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort();
+      setUpdateStatus({ type: "idle" });
+    }, 30_000);
+
+    (async () => {
+      setUpdateStatus({ type: "checking" });
+      const response = await checkForUpdates();
+      if (controller.signal.aborted) return;
+      clearTimeout(timeout);
+
+      if (response.result?.available) {
+        setUpdateStatus({
+          type: "available",
+          version: response.result.version ?? "未知",
+          notes: response.result.notes,
+          date: response.result.date,
+        });
+      } else {
+        setUpdateStatus({ type: "unavailable" });
+      }
+    })();
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, []);
 
   // ── Window close guard ───────────────────────────────────────
   useEffect(() => {
@@ -651,6 +693,45 @@ function App() {
     );
   }, []);
 
+  // ── Updater callbacks ────────────────────────────────────────────
+
+  const handleCheckForUpdates = useCallback(async () => {
+    setUpdateStatus({ type: "checking" });
+    setStatusMessage("正在检查更新…");
+    const response = await checkForUpdates();
+    if (response.result?.available) {
+      setUpdateStatus({
+        type: "available",
+        version: response.result.version ?? "未知",
+        notes: response.result.notes,
+        date: response.result.date,
+      });
+      setStatusMessage(`发现新版本 v${response.result.version}`);
+    } else if (response.error) {
+      setUpdateStatus({ type: "error", message: response.error.message });
+      setStatusMessage("检查更新失败");
+    } else {
+      setUpdateStatus({ type: "unavailable" });
+      setStatusMessage("当前已是最新版本");
+    }
+  }, []);
+
+  const handleInstallUpdate = useCallback(async () => {
+    setUpdateStatus({ type: "installing" });
+    setStatusMessage("正在下载并安装更新…");
+    const response = await installUpdate();
+    if (response.result?.success) {
+      setStatusMessage("更新安装完成，应用即将重启");
+      // The app will restart automatically after install
+    } else if (response.error) {
+      setUpdateStatus({ type: "error", message: response.error.message });
+      setStatusMessage("更新安装失败");
+    } else {
+      setUpdateStatus({ type: "idle" });
+      setStatusMessage("更新安装未完成");
+    }
+  }, []);
+
   // ── Keyboard shortcuts ───────────────────────────────────────
   // Must come after handleUndo/handleRedo/handleViewModeChange/handleSelectWorkspace
 
@@ -784,6 +865,9 @@ function App() {
             versionSummary={VERSION_SUMMARY}
             versionDetails={VERSION_DETAILS}
             onRetrySave={handleRetrySave}
+            updateStatus={updateStatus}
+            onCheckForUpdates={handleCheckForUpdates}
+            onInstallUpdate={handleInstallUpdate}
           />
         }
       />

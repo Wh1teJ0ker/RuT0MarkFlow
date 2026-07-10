@@ -4,7 +4,7 @@ pub mod commands;
 pub mod models;
 pub mod modules;
 
-use commands::{document, health, state, workspace};
+use commands::{document, health, state, updater, workspace};
 use modules::workspace::watcher::WatcherState;
 use tauri::Emitter;
 
@@ -15,6 +15,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Mutex::new(WatcherState::new()))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -36,6 +37,8 @@ pub fn run() {
             document::pick_save_path,
             state::load_app_settings,
             state::save_app_settings,
+            updater::check_for_updates,
+            updater::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -43,7 +43,7 @@ function main() {
   );
 
   assertFileExists("docs/releases/v0.1.2/规划需求.md");
-  assertMissing("docs/releases/v0.1.3/规划需求.md");
+  assertFileExists("docs/releases/v0.1.3/规划需求.md");
 
   assertFileExists("src-tauri/icons/app-icon-source.png");
   assertFileExists("src-tauri/icons/icon.png");
@@ -147,7 +147,7 @@ function scanTrackedTextFiles() {
     },
     {
       label: "stale release tag link",
-      pattern: /(?:releases\/tag|archive\/refs\/tags)\/v0\.1\.3\b/g,
+      pattern: /(?:releases\/tag|archive\/refs\/tags)\/v0\.1\.(?:4|[4-9]\d*)\b/g,
     },
   ];
 
