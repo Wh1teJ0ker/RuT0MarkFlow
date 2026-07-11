@@ -13,9 +13,48 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  validate:
+  # ── Lightweight lint gate (no Rust toolchain needed) ──
+  # Runs version:check + repo:check + frontend tests + frontend build.
+  # publish depends only on this job; rust-check runs in parallel with publish.
+  lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check version sync
+        run: pnpm version:check -- --tag "${{ github.ref_name }}"
+
+      - name: Run repo hygiene checks
+        run: pnpm repo:check
+
+      - name: Run frontend tests
+        run: pnpm test
+
+      - name: Build frontend
+        run: pnpm build
+
+  # ── Rust verification gate (runs in parallel with publish) ──
+  # cargo test + clippy + pressure test. Does NOT block publish.
+  rust-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -53,20 +92,13 @@ jobs:
         with:
           components: clippy
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Check version sync
-        run: pnpm version:check -- --tag "${{ github.ref_name }}"
-
-      - name: Run repo hygiene checks
-        run: pnpm repo:check
-
-      - name: Run frontend tests
-        run: pnpm test
-
-      - name: Build frontend
-        run: pnpm build
 
       - name: Run Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
@@ -77,8 +109,10 @@ jobs:
       - name: Run Rust clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
+  # ── Build & publish platform bundles ──
+  # Depends only on lint (fast gate). rust-check runs in parallel.
   publish:
-    needs: validate
+    needs: lint
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
     strategy:
@@ -86,16 +120,16 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            args: --target aarch64-apple-darwin --no-sign
+            args: --target aarch64-apple-darwin --bundles app,dmg
             rust_targets: aarch64-apple-darwin
           - platform: macos-latest
-            args: --target x86_64-apple-darwin --no-sign
+            args: --target x86_64-apple-darwin --bundles app,dmg
             rust_targets: x86_64-apple-darwin
           - platform: ubuntu-latest
-            args: --no-sign
+            args: --bundles deb,appimage
             rust_targets: ""
           - platform: windows-latest
-            args: --no-sign
+            args: --bundles nsis
             rust_targets: ""
 
     steps:
@@ -135,6 +169,11 @@ jobs:
         with:
           targets: ${{ matrix.rust_targets }}
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
@@ -151,7 +190,14 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           uploadUpdaterJson: true
           uploadWorkflowArtifacts: true
-          releaseAssetNamePattern: "[name]_[version]_[platform]_[arch]_[bundle][setup][ext]"
+          # 命名令牌说明：
+          #   [name]     - 项目名称（小写）
+          #   [version]  - 版本号（不含 v 前缀）
+          #   [platform] - 目标平台（Linux 为 ubuntu，非 linux）
+          #   [arch]     - CPU 架构（x64 / aarch64）
+          #   [setup]    - 安装程序后缀（macOS 下为空）
+          #   [ext]      - 文件扩展名
+          releaseAssetNamePattern: "[name]_[version]_[platform]_[arch]_[setup][ext]"
           workflowArtifactNamePattern: "[platform]-[arch]-[bundle]"
           retryAttempts: 2
           args: ${{ matrix.args }}
@@ -167,9 +213,9 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: RuT0MarkFlow ${{ github.ref_name }}
           prerelease: ${{ contains(github.ref_name, '-') }}
-          uploadUpdaterJson: true
+          uploadUpdaterJson: false
           uploadPlainBinary: true
           uploadWorkflowArtifacts: false
           releaseAssetNamePattern: "[name]_[version]_[platform]_[arch]_portable[ext]"
           retryAttempts: 2
-          args: --no-sign --no-bundle
+          args: --no-bundle

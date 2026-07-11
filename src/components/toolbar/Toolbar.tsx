@@ -1,4 +1,4 @@
-import { FolderOpen, ArrowLeftRight, Loader2, Save, SaveAll, FilePlus2, Sun, Moon, X } from "lucide-react";
+import { FolderOpen, ArrowLeftRight, Loader2, Save, SaveAll, FilePlus2, Sun, Moon, X, Settings } from "lucide-react";
 import type { ViewMode, WorkspaceState } from "../../types";
 
 interface ToolbarProps {
@@ -18,6 +18,7 @@ interface ToolbarProps {
   workspaceState: WorkspaceState;
   theme: "light" | "dark";
   onToggleTheme: () => void;
+  onOpenSettings: () => void;
 }
 
 function Toolbar({
@@ -37,6 +38,7 @@ function Toolbar({
   workspaceState,
   theme,
   onToggleTheme,
+  onOpenSettings,
 }: ToolbarProps) {
   const otherMode: ViewMode =
     viewMode === "immersive-preview" ? "split-editor" : "immersive-preview";
@@ -132,6 +134,13 @@ function Toolbar({
 
       {/* Right group */}
       <div className="toolbar-group toolbar-group--right">
+        <button
+          className="toolbar-btn"
+          onClick={onOpenSettings}
+          title="设置"
+        >
+          <Settings size={16} />
+        </button>
         <button
           className="toolbar-btn"
           onClick={onToggleTheme}

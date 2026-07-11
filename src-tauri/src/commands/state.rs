@@ -1,7 +1,9 @@
+use crate::models::dirty_state::DocumentDirtyState;
 use crate::models::response::CommandResponse;
 use crate::models::settings::AppSettings;
 use crate::modules::settings::persistence;
 use tauri::Manager;
+use tauri::State;
 
 /// Load persisted app settings from disk.
 ///
@@ -37,6 +39,16 @@ pub fn save_app_settings(app: tauri::AppHandle, settings: AppSettings) -> Comman
             CommandResponse::success_with_data(())
         }
     }
+}
+
+/// Set the document dirty flag on the Rust side.
+///
+/// The front-end synchronises `document.isDirty` to this flag so that
+/// the window event handler can conditionally call `prevent_close()`.
+#[tauri::command]
+pub fn set_document_dirty(state: State<'_, DocumentDirtyState>, dirty: bool) {
+    let mut guard = state.0.lock().unwrap();
+    *guard = dirty;
 }
 
 #[cfg(test)]

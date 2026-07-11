@@ -6,6 +6,8 @@ dist/
 tsconfig.tsbuildinfo
 index.js
 handoff/
+.zcode/
+src-tauri/.cargo/
 
 # Rust build
 src-tauri/target/
@@ -23,3 +25,6 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Tauri signing key (DO NOT COMMIT)
+.tauri/

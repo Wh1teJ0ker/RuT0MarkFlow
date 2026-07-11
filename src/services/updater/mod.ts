@@ -22,10 +22,36 @@ export interface UpdateInstallResponse {
 }
 
 /**
+ * Classify an update error into a user-friendly Chinese message.
+ *
+ * Heuristic:
+ *  - Network-level errors (connection refused, DNS failure, timeout) -> "无法连接更新服务器"
+ *  - HTTP 404 or "not found" -> "更新源未配置，请等待发布"
+ *  - Otherwise -> original message
+ */
+function classifyUpdateError(error: AppErrorPayload): AppErrorPayload {
+  const msg = error.message || "";
+  const isNetworkError =
+    /(?:connect(?:ion)?\s*(?:refused|reset|timed?out)|dns|network|timeout|econnrefused|enotfound|econnreset)/i.test(
+      msg,
+    );
+  const is404 = /(?:404|not ?found|status 404)/i.test(msg);
+
+  if (isNetworkError) {
+    return { ...error, message: "无法连接更新服务器" };
+  }
+  if (is404) {
+    return { ...error, message: "更新源未配置，请等待发布" };
+  }
+  return error;
+}
+
+/**
  * Check for updates via the Tauri updater plugin.
  *
  * Calls the `check_for_updates` Tauri command which queries GitHub Releases.
  * Errors are wrapped in structured AppErrorPayload (domain: system, operation: check-update).
+ * Error messages are classified into user-friendly Chinese strings.
  */
 export async function checkForUpdates(): Promise<UpdateCheckResponse> {
   const result = await invokeTauriCommand<UpdateCheckResult>(
@@ -44,7 +70,10 @@ export async function checkForUpdates(): Promise<UpdateCheckResponse> {
     return { result: result.data, error: null };
   }
 
-  return { result: null, error: result.error };
+  return {
+    result: null,
+    error: result.error ? classifyUpdateError(result.error) : result.error,
+  };
 }
 
 /**

@@ -63,8 +63,8 @@ describe("App update check (v0.1.3)", () => {
     await flushMicrotasks();
     await flushMicrotasks();
 
-    // After auto-check, should show "有新版本" in status bar
-    // The update status indicator renders "有新版本 v0.1.4"
+    // After auto-check, the update status is available in the settings page
+    // (update UI was migrated from StatusBar to SettingsPage in T3)
     // Note: the auto-check may not have resolved yet depending on timing
     // At minimum, verify the check command was invoked
     const invokeCalls = vi.mocked(invoke).mock.calls.map(([cmd]) => cmd);
@@ -95,7 +95,7 @@ describe("App update check (v0.1.3)", () => {
     expect(screen.queryByText(/有新版本/)).toBeNull();
   });
 
-  it("manually checking for updates updates status bar", async () => {
+  it("manually checking for updates updates settings page", async () => {
     mockInvoke({
       load_app_settings: { success: true, data: { theme: "light" } },
       check_for_updates: {
@@ -113,7 +113,14 @@ describe("App update check (v0.1.3)", () => {
     await flushMicrotasks();
     await flushMicrotasks();
 
-    // Find and click "检查更新" button in status bar
+    // Open the settings page first (update UI was migrated from StatusBar to SettingsPage in T3)
+    const settingsBtn = screen.getByTitle("设置");
+    await act(async () => {
+      fireEvent.click(settingsBtn);
+    });
+    await flushMicrotasks();
+
+    // Find and click "检查更新" button in settings page
     const checkBtn = screen.getByText("检查更新");
     await act(async () => {
       fireEvent.click(checkBtn);
@@ -122,11 +129,10 @@ describe("App update check (v0.1.3)", () => {
     await flushMicrotasks();
     await flushMicrotasks();
 
-    // After check resolves, should show update available
-    const updateText = screen.queryByText(/有新版本/);
-    if (updateText) {
-      expect(updateText.textContent).toContain("v0.1.4");
-    }
+    // After check resolves, should show update available in settings page
+    const updateTexts = screen.queryAllByText(/发现新版本/);
+    expect(updateTexts.length).toBeGreaterThan(0);
+    expect(updateTexts[0].textContent).toContain("v0.1.4");
   });
 
   it("check_for_updates error is handled gracefully", async () => {

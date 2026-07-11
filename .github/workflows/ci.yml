@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - "**"
+    tags-ignore:
+      - "v*"
   pull_request:
 
 concurrency:
@@ -51,6 +53,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile

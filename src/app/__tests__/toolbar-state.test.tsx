@@ -26,6 +26,7 @@ function renderToolbar(overrides: Record<string, unknown> = {}) {
     theme: "light" as const,
     onToggleTheme: vi.fn(),
     onCloseDocument: vi.fn(),
+    onOpenSettings: vi.fn(),
     ...overrides,
   };
   return render(<Toolbar {...props} />);

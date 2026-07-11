@@ -44,6 +44,7 @@ function main() {
 
   assertFileExists("docs/releases/v0.1.2/规划需求.md");
   assertFileExists("docs/releases/v0.1.3/规划需求.md");
+  assertFileExists("docs/releases/v0.1.4/规划需求.md");
 
   assertFileExists("src-tauri/icons/app-icon-source.png");
   assertFileExists("src-tauri/icons/icon.png");
@@ -106,7 +107,7 @@ function main() {
   );
   assertIncludes(
     workflow,
-    'releaseAssetNamePattern: "[name]_[version]_[platform]_[arch]_[bundle][setup][ext]"',
+    'releaseAssetNamePattern: "[name]_[version]_[platform]_[arch]_[setup][ext]"',
     "Release workflow must keep the standard bundle naming rule",
   );
   assertIncludes(
@@ -147,7 +148,7 @@ function scanTrackedTextFiles() {
     },
     {
       label: "stale release tag link",
-      pattern: /(?:releases\/tag|archive\/refs\/tags)\/v0\.1\.(?:4|[4-9]\d*)\b/g,
+      pattern: /(?:releases\/tag|archive\/refs\/tags)\/v0\.1\.(?:5|[5-9]\d*)\b/g,
     },
   ];
 
@@ -176,7 +177,14 @@ function scanTrackedTextFiles() {
 }
 
 function readMaybeText(path, relativePath) {
-  const buffer = readFileSync(path);
+  let buffer;
+  try {
+    buffer = readFileSync(path);
+  } catch {
+    // File is tracked by git but missing from working tree (e.g. staged deletion).
+    // Skip it rather than crashing the hygiene gate.
+    return null;
+  }
   if (buffer.includes(0)) {
     return null;
   }

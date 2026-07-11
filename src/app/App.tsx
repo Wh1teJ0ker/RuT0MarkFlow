@@ -4,6 +4,7 @@ import MainLayout from "../components/layout/MainLayout";
 import Toolbar from "../components/toolbar/Toolbar";
 import Sidebar from "../components/sidebar/Sidebar";
 import ContentArea from "../components/content/ContentArea";
+import SettingsPage from "../components/settings/SettingsPage";
 import StatusBar from "../components/statusbar/StatusBar";
 import { VERSION_DETAILS, VERSION_SUMMARY } from "../version";
 import { UnsavedConfirmDialog } from "../components/dialogs";
@@ -22,7 +23,8 @@ import {
 import { checkForUpdates, installUpdate } from "../services/updater/mod";
 import { useRender } from "../modules/render/mod";
 import { useEditorHistory } from "../hooks/useEditorHistory";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ViewMode,
   WorkspaceState,
@@ -99,6 +101,7 @@ function App() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [renderNonce, setRenderNonce] = useState(0);
   const [isFindBarOpen, setIsFindBarOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // ── Editor history (undo/redo) ─────────────────────────────────
   const history = useEditorHistory(document.content);
@@ -297,6 +300,24 @@ function App() {
     saveAppSettings(settings);
   }, [workspace?.rootPath, document.relativePath, viewMode, theme]);
 
+  // ── Sync document.isDirty to Rust side ────────────────────────
+  // Keeps the Rust DocumentDirtyState in sync so the window event
+  // handler can conditionally prevent_close().
+  useEffect(() => {
+    invoke("set_document_dirty", { dirty: document.isDirty }).catch((err) => {
+      console.error("Failed to sync dirty state to Rust:", err);
+    });
+  }, [document.isDirty]);
+
+  // ── Refs for stable listeners (avoid stale closure / re-registration race) ──
+  const closeGuardDirtyRef = useRef(false);
+  const closeGuardSaveRef = useRef<() => Promise<boolean>>(async () => false);
+  const wsRootPathRef = useRef<string | undefined>(undefined);
+  const wsRefreshIndexRef = useRef<() => Promise<void>>(async () => {});
+  // Update every render
+  closeGuardDirtyRef.current = document.isDirty;
+  wsRootPathRef.current = workspace?.rootPath;
+
   // ── Helper: refresh index after save-as/new-save ─────────────
 
   const refreshIndex = useCallback(async () => {
@@ -316,6 +337,7 @@ function App() {
       setStatusMessage(errorDisplay?.statusMessage ?? "工作区刷新失败");
     }
   }, [workspace]);
+  wsRefreshIndexRef.current = refreshIndex;
 
   // ── Startup: auto-check for updates (mount-once, silent failure) ─
   const updateCheckAttemptedRef = useRef(false);
@@ -355,43 +377,48 @@ function App() {
   }, []);
 
   // ── Window close guard ───────────────────────────────────────
+  // Stable listener: registered once via [] dep, reads current isDirty via ref.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     (async () => {
       unlisten = await listen("app://close-requested", async () => {
-        if (document.isDirty) {
+        if (closeGuardDirtyRef.current) {
           const action = await requestUnsavedConfirm();
           if (action === "save") {
-            const saved = await handleSaveDocument();
+            const saved = await closeGuardSaveRef.current();
             if (!saved) return;
           }
           if (action === "cancel") return;
         }
-        const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        await getCurrentWindow().destroy();
+        await getCurrentWindow().destroy().catch((err) => {
+          console.error("Window destroy failed:", err);
+        });
       });
-    })();
+    })().catch((err) => {
+      console.error("Failed to register close-requested listener:", err);
+    });
     return () => { unlisten?.(); };
-  }, [document.isDirty]);
+  }, []);
 
   // ── Workspace watcher event listener ──────────────────────────
-  // Listens for "workspace://index-changed" events emitted by the Rust
-  // file-system watcher after a debounced rebuild. Validates rootPath
-  // to prevent cross-talk when switching workspaces rapidly.
+  // Stable listener: registered once via [] dep, reads workspace via ref.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     (async () => {
       unlisten = await listen<IndexChangedPayload>("workspace://index-changed", async (event) => {
         // Verify the event is for the current workspace (prevents cross-talk
         // during workspace switching — stale events from old watcher are ignored)
-        if (!workspace || event.payload.rootPath !== workspace.rootPath) {
+        const rootPath = wsRootPathRef.current;
+        if (!rootPath || event.payload.rootPath !== rootPath) {
           return;
         }
-        await refreshIndex();
+        await wsRefreshIndexRef.current();
       });
-    })();
+    })().catch((err) => {
+      console.error("Failed to register workspace://index-changed listener:", err);
+    });
     return () => { unlisten?.(); };
-  }, [workspace?.rootPath]);
+  }, []);
 
   // ── Save (regular) ──────────────────────────────────────────
 
@@ -436,6 +463,7 @@ function App() {
       return false;
     }
   }, [workspace, document]);
+  closeGuardSaveRef.current = handleSaveDocument;
 
   // ── Save As ──────────────────────────────────────────────────
 
@@ -545,6 +573,16 @@ function App() {
 
   const handleToggleTheme = useCallback(() => {
     setTheme((prev) => (prev === "light" ? "dark" : "light"));
+  }, []);
+
+  // ── Settings page ──────────────────────────────────────────────
+
+  const handleOpenSettings = useCallback(() => {
+    setIsSettingsOpen(true);
+  }, []);
+
+  const handleCloseSettings = useCallback(() => {
+    setIsSettingsOpen(false);
   }, []);
 
   // ── Image retry (bump renderNonce to force re-render) ─────────
@@ -764,7 +802,13 @@ function App() {
         handleSelectWorkspace();
       } else if (meta && (e.key === "w" || e.key === "W")) {
         e.preventDefault();
-        handleCloseDocument();
+        if (document.path !== null || document.isNew || Boolean(document.openError)) {
+          handleCloseDocument();
+        } else {
+          getCurrentWindow().destroy().catch((err) => {
+            console.error("Window destroy failed:", err);
+          });
+        }
       } else if (meta && (e.key === "f" || e.key === "F")) {
         e.preventDefault();
         setIsFindBarOpen(true);
@@ -818,6 +862,7 @@ function App() {
             workspaceState={workspaceState}
             theme={theme}
             onToggleTheme={handleToggleTheme}
+            onOpenSettings={handleOpenSettings}
           />
         }
         sidebar={
@@ -833,6 +878,16 @@ function App() {
           />
         }
         content={
+          isSettingsOpen ? (
+            <SettingsPage
+              theme={theme}
+              onToggleTheme={handleToggleTheme}
+              onClose={handleCloseSettings}
+              updateStatus={updateStatus}
+              onCheckForUpdates={handleCheckForUpdates}
+              onInstallUpdate={handleInstallUpdate}
+            />
+          ) : (
           <ContentArea
             document={document}
             viewMode={viewMode}
@@ -851,6 +906,7 @@ function App() {
             isFindBarOpen={isFindBarOpen}
             onCloseFindBar={() => setIsFindBarOpen(false)}
           />
+          )
         }
         statusBar={
           <StatusBar
@@ -865,9 +921,6 @@ function App() {
             versionSummary={VERSION_SUMMARY}
             versionDetails={VERSION_DETAILS}
             onRetrySave={handleRetrySave}
-            updateStatus={updateStatus}
-            onCheckForUpdates={handleCheckForUpdates}
-            onInstallUpdate={handleInstallUpdate}
           />
         }
       />

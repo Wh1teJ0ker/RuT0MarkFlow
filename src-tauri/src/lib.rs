@@ -5,8 +5,10 @@ pub mod models;
 pub mod modules;
 
 use commands::{document, health, state, updater, workspace};
+use models::dirty_state::DocumentDirtyState;
 use modules::workspace::watcher::WatcherState;
 use tauri::Emitter;
+use tauri::Manager;
 
 /// Application entry point.
 ///
@@ -17,10 +19,16 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Mutex::new(WatcherState::new()))
+        .manage(DocumentDirtyState::new())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.emit("app://close-requested", ());
+                let dirty_state = window.state::<DocumentDirtyState>();
+                let is_dirty = *dirty_state.0.lock().unwrap();
+                if is_dirty {
+                    api.prevent_close();
+                    let _ = window.emit("app://close-requested", ());
+                }
+                // If clean, do nothing — window closes normally.
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -37,6 +45,7 @@ pub fn run() {
             document::pick_save_path,
             state::load_app_settings,
             state::save_app_settings,
+            state::set_document_dirty,
             updater::check_for_updates,
             updater::install_update,
         ])

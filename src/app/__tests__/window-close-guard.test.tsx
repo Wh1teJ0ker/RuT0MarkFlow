@@ -46,15 +46,17 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 let destroyMock = vi.fn();
 
 vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: vi.fn(() => ({ destroy: vi.fn(() => destroyMock()) })),
+  getCurrentWindow: vi.fn(() => ({ destroy: vi.fn(() => Promise.resolve(destroyMock())) })),
 }));
 
 import { invoke } from "@tauri-apps/api/core";
 
-function mockInvoke(behaviors: Record<string, object>) {
+function mockInvoke(behaviors: Record<string, unknown>) {
   vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-    const b = behaviors[cmd];
-    return b ?? { success: false, data: null, error: { code: "NO_MOCK", message: "no mock for " + cmd, recoverable: true } };
+    if (cmd in behaviors) {
+      return behaviors[cmd];
+    }
+    return { success: false, data: null, error: { code: "NO_MOCK", message: "no mock for " + cmd, recoverable: true } };
   });
 }
 
@@ -77,6 +79,7 @@ afterEach(() => {
 });
 
 import App from "../App";
+import { listen } from "@tauri-apps/api/event";
 
 /**
  * Set up mock responses so the App restores a workspace and opens a doc
@@ -104,6 +107,7 @@ function setupRestoredDocument(content: string) {
       success: true,
       data: { path: "doc.md", relativePath: "doc.md", content, updatedAt: "123" },
     },
+    set_document_dirty: null,
   });
 }
 
@@ -196,6 +200,7 @@ describe("Window close guard (P0-1)", () => {
         success: true,
         data: { path: "doc.md", relativePath: "doc.md", content: "# Modified content", updatedAt: "456" },
       },
+      set_document_dirty: null,
     });
 
     render(<App />);
@@ -254,6 +259,7 @@ describe("Window close guard (P0-1)", () => {
         data: null,
         error: { code: "SAVE_FAILED", message: "保存失败", recoverable: true },
       },
+      set_document_dirty: null,
     });
 
     render(<App />);
@@ -282,5 +288,61 @@ describe("Window close guard (P0-1)", () => {
 
     // After save fails, destroy should NOT be called (window stays open)
     expect(destroyMock).not.toHaveBeenCalled();
+  });
+
+  it("isDirty=true + discard → destroy is called", async () => {
+    setupRestoredDocument("# Initial");
+    render(<App />);
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    // Make the document dirty
+    const textarea = document.querySelector<HTMLTextAreaElement>(".content-editor-textarea")!;
+    expect(textarea).not.toBeNull();
+
+    await act(async () => {
+      const { fireEvent } = await import("@testing-library/react");
+      fireEvent.change(textarea, { target: { value: "# Discarded content" } });
+    });
+    await flushMicrotasks();
+
+    // Trigger close
+    await triggerCloseRequest();
+
+    // Dialog shows → click "不保存并继续" (discard)
+    const discardBtn = Array.from(document.querySelectorAll("button")).find(b => b.textContent === "不保存并继续");
+    expect(discardBtn).toBeDefined();
+    if (discardBtn) {
+      await act(async () => { discardBtn.click(); });
+      await flushMicrotasks();
+    }
+
+    expect(destroyMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("listen() rejection is caught gracefully without crashing", async () => {
+    // Make listen() reject for the first call (close-requested registration)
+    vi.mocked(listen).mockRejectedValueOnce(new Error("register failed"));
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    setupRestoredDocument("# Clean doc");
+    render(<App />);
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    // Verify console.error was called with the registration failure message
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "Failed to register close-requested listener:",
+      expect.any(Error),
+    );
+
+    // No close-requested handler was registered (listen rejected)
+    expect(eventHandlers["app://close-requested"]).toBeUndefined();
+
+    // App still renders and is functional
+    expect(document.querySelector(".content-editor-textarea")).not.toBeNull();
+
+    consoleSpy.mockRestore();
   });
 });
