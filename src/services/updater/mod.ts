@@ -27,18 +27,27 @@ export interface UpdateInstallResponse {
  * Heuristic:
  *  - Network-level errors (connection refused, DNS failure, timeout) -> "无法连接更新服务器"
  *  - HTTP 404 or "not found" -> "更新源未配置，请等待发布"
+ *  - Release metadata incomplete / not yet published -> "更新发布尚未完成，请稍后重试"
  *  - Otherwise -> original message
  */
-function classifyUpdateError(error: AppErrorPayload): AppErrorPayload {
+export function classifyUpdateError(error: AppErrorPayload): AppErrorPayload {
   const msg = error.message || "";
   const isNetworkError =
     /(?:connect(?:ion)?\s*(?:refused|reset|timed?out)|dns|network|timeout|econnrefused|enotfound|econnreset)/i.test(
       msg,
     );
   const is404 = /(?:404|not ?found|status 404)/i.test(msg);
+  const isReleaseJsonUnavailable =
+    /could not fetch a valid release json from the remote/i.test(msg);
+  const isPlatformMissing =
+    /platform .* was not found in the response .*platforms.*object/i.test(msg) ||
+    /none of the fallback platforms .* were found in the response .*platforms.*object/i.test(msg);
 
   if (isNetworkError) {
     return { ...error, message: "无法连接更新服务器" };
+  }
+  if (isReleaseJsonUnavailable || isPlatformMissing) {
+    return { ...error, message: "更新发布尚未完成，请稍后重试" };
   }
   if (is404) {
     return { ...error, message: "更新源未配置，请等待发布" };

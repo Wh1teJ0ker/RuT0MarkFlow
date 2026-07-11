@@ -186,6 +186,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: RuT0MarkFlow ${{ github.ref_name }}
+          releaseDraft: true
           generateReleaseNotes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           uploadUpdaterJson: true
@@ -212,6 +213,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: RuT0MarkFlow ${{ github.ref_name }}
+          releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           uploadUpdaterJson: false
           uploadPlainBinary: true
@@ -219,3 +221,26 @@ jobs:
           releaseAssetNamePattern: "[name]_[version]_[platform]_[arch]_portable[ext]"
           retryAttempts: 2
           args: --no-bundle
+
+  # ── Publish draft release only after all bundles and Rust gates pass ──
+  # This keeps releases/latest/download/latest.json on the previous stable
+  # version until the new release is complete across every platform.
+  finalize-release:
+    needs:
+      - publish
+      - rust-check
+    if: ${{ needs.publish.result == 'success' && needs.rust-check.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Publish completed release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          args=(release edit "$TAG_NAME" --draft=false)
+          if [[ "$TAG_NAME" != *-* ]]; then
+            args+=(--latest)
+          fi
+          gh "${args[@]}"
