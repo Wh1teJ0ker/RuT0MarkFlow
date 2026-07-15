@@ -6,7 +6,7 @@ export interface VersionCatalog {
   releaseTag: string;
 }
 
-const FALLBACK_RELEASE_VERSION = "0.1.4";
+const FALLBACK_RELEASE_VERSION = "0.1.0";
 const FALLBACK_WORKSPACE_SCHEMA_VERSION = "1.0.0";
 
 function readVersion(value: unknown, fallback: string): string {

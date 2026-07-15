@@ -42,9 +42,7 @@ function main() {
     `version-manifest.json appVersion must match package.json version (${packageJson.version})`,
   );
 
-  assertFileExists("docs/releases/v0.1.2/规划需求.md");
-  assertFileExists("docs/releases/v0.1.3/规划需求.md");
-  assertFileExists("docs/releases/v0.1.4/规划需求.md");
+  assertFileExists("docs/releases/v0.1.0/规划需求.md");
 
   assertFileExists("src-tauri/icons/app-icon-source.png");
   assertFileExists("src-tauri/icons/icon.png");
@@ -148,7 +146,7 @@ function scanTrackedTextFiles() {
     },
     {
       label: "stale release tag link",
-      pattern: /(?:releases\/tag|archive\/refs\/tags)\/v0\.1\.(?:5|[5-9]\d*)\b/g,
+      pattern: /(?:releases\/tag|archive\/refs\/tags)\/v0\.1\.(?:[1-9]|[1-9]\d*)\b/g,
     },
   ];
 

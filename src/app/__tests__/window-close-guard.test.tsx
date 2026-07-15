@@ -331,10 +331,10 @@ describe("Window close guard (P0-1)", () => {
     await flushMicrotasks();
     await flushMicrotasks();
 
-    // Verify console.error was called with the registration failure message
+    // Verify the registration failure was surfaced via the logger
+    // (logger routes to console.error with a single formatted string).
     expect(consoleSpy).toHaveBeenCalledWith(
-      "Failed to register close-requested listener:",
-      expect.any(Error),
+      expect.stringContaining("Failed to register close-requested listener"),
     );
 
     // No close-requested handler was registered (listen rejected)

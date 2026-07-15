@@ -66,7 +66,10 @@ pub fn start_watcher(
         // Ignore send errors (receiver dropped = watcher stopping)
         let _ = event_tx.send(res);
     })
-    .map_err(|e| format!("watcher 创建失败: {}", e))?;
+    .map_err(|e| {
+        log::warn!("Watcher create failed: {}", e);
+        format!("watcher 创建失败: {}", e)
+    })?;
 
     // ── Step 2: Start watching the directory ──────────────────────
     let path = Path::new(root_path);
@@ -75,7 +78,10 @@ pub fn start_watcher(
     }
 
     NotifyWatcher::watch(&mut notify, path, RecursiveMode::Recursive)
-        .map_err(|e| format!("watcher 启动失败: {}", e))?;
+        .map_err(|e| {
+            log::warn!("Watcher watch failed: {}", e);
+            format!("watcher 启动失败: {}", e)
+        })?;
 
     // ── Step 3: Set up stop-signal channel ────────────────────────
     let (stop_tx, stop_rx) = mpsc::channel::<()>();
@@ -89,7 +95,12 @@ pub fn start_watcher(
         .spawn(move || {
             debounce_loop(event_rx, stop_rx, &root_owned, app_clone);
         })
-        .map_err(|e| format!("无法创建 watcher 线程: {}", e))?;
+        .map_err(|e| {
+            log::warn!("Watcher thread spawn failed: {}", e);
+            format!("无法创建 watcher 线程: {}", e)
+        })?;
+
+    log::info!("Watcher started for: {}", root_path);
 
     Ok(WorkspaceWatcher {
         _notify_watcher: notify,
@@ -123,6 +134,7 @@ fn debounce_loop(
             Ok(Err(_)) => {
                 // Individual notify errors (e.g. permission-denied on a file)
                 // are non-fatal; keep watching.
+                log::warn!("File watcher error (non-fatal, continuing)");
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 // ── Check if we should emit a rebuild signal ─────
@@ -132,13 +144,16 @@ fn debounce_loop(
 
                         // Double-check workspace still exists
                         if !Path::new(root_path).is_dir() {
+                            log::warn!("Workspace directory disappeared: {}", root_path);
                             continue;
                         }
 
                         let payload = IndexChangedPayload {
                             root_path: root_path.to_string(),
                         };
-                        let _ = app_handle.emit(INDEX_CHANGED_EVENT, payload);
+                        if let Err(e) = app_handle.emit(INDEX_CHANGED_EVENT, payload) {
+                            log::error!("Failed to emit index-changed event for: {} ({})", root_path, e);
+                        }
                     }
                 }
             }
@@ -169,7 +184,10 @@ pub fn stop_watcher(state: &Mutex<WatcherState>) {
         if let Some(w) = guard.watcher.take() {
             // Signal the debounce loop to exit; dropping `w` stops notify.
             let _ = w.stop_tx.send(());
+            log::info!("Watcher stopped");
         }
+    } else {
+        log::error!("WatcherState mutex poisoned in stop_watcher");
     }
 }
 

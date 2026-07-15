@@ -9,14 +9,46 @@ describe("resolveResources", () => {
       rootPath: "/workspace",
     });
     expect(result.html).toContain("workspace/subdir/image.png");
-    expect(result.html).toContain("onerror=");
+    // Strict CSP: no inline onerror handler; original src preserved for retry.
+    expect(result.html).not.toContain("onerror=");
+    expect(result.html).toContain('data-original-src="image.png"');
     expect(result.imageErrors).toHaveLength(0);
   });
 
-  it("leaves absolute image paths unchanged", () => {
+  it("blocks absolute image paths and reports an error", () => {
     const html = '<img src="/absolute/path.png" />';
-    const result = resolveResources(html, { documentDir: "docs" });
-    expect(result.html).toContain('src="/absolute/path.png"');
+    const result = resolveResources(html, {
+      documentDir: "docs",
+      rootPath: "/ws",
+    });
+    // Absolute paths must not be loaded directly (defense-in-depth; the
+    // Rust asset layer also enforces scope). No <img> with the abs path is
+    // emitted; instead an error placeholder is shown.
+    expect(result.html).not.toContain("<img");
+    expect(result.html).toContain("image-error");
+    expect(result.html).toContain("[图片: /absolute/path.png]");
+    expect(result.imageErrors.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("blocks Windows absolute image paths and reports an error", () => {
+    const html = '<img src="C:\\secret\\img.png" />';
+    const result = resolveResources(html, {
+      documentDir: "docs",
+      rootPath: "/ws",
+    });
+    expect(result.html).not.toContain("<img");
+    expect(result.imageErrors.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("prevents ../ escape in image paths", () => {
+    const html = '<img src="../../outside.png" />';
+    const result = resolveResources(html, {
+      documentDir: "sub",
+      rootPath: "/ws",
+    });
+    // Escape attempt must not resolve to a path outside the workspace.
+    expect(result.html).toContain("image-error");
+    expect(result.imageErrors.length).toBeGreaterThanOrEqual(1);
   });
 
   it("leaves http/https image src unchanged", () => {
@@ -42,6 +74,38 @@ describe("resolveResources", () => {
     const html = '<a href="doc.md#section">Section</a>';
     const result = resolveResources(html);
     expect(result.html).toContain('data-internal-md="doc.md"');
+    // Fragment is preserved in a dedicated attribute (not lost).
+    expect(result.html).toContain('data-internal-md-anchor="#section"');
+  });
+
+  it("resolves relative .md links against the current document directory", () => {
+    const html = '<a href="other.md">Other</a>';
+    const result = resolveResources(html, {
+      documentDir: "subdir",
+      rootPath: "/ws",
+    });
+    // Root-relative path passed to the document opener.
+    expect(result.html).toContain('data-internal-md="subdir/other.md"');
+  });
+
+  it("clamps ../ in .md links to the workspace root", () => {
+    const html = '<a href="../../../parent.md">Parent</a>';
+    const result = resolveResources(html, {
+      documentDir: "a/b",
+      rootPath: "/ws",
+    });
+    // Escape above root is stripped → stays at root.
+    expect(result.html).toContain('data-internal-md="parent.md"');
+  });
+
+  it("resolves sibling .md links with fragments against doc dir", () => {
+    const html = '<a href="./sibling.md#heading">Sibling</a>';
+    const result = resolveResources(html, {
+      documentDir: "docs",
+      rootPath: "/ws",
+    });
+    expect(result.html).toContain('data-internal-md="docs/sibling.md"');
+    expect(result.html).toContain('data-internal-md-anchor="#heading"');
   });
 
   it("leaves hash-only links unchanged", () => {

@@ -12,6 +12,7 @@ pub fn load_settings(app_data_dir: &Path) -> AppSettings {
     let path = app_data_dir.join(SETTINGS_FILE);
 
     if !path.exists() {
+        log::debug!("Settings file not found, using defaults");
         return AppSettings::default();
     }
 
@@ -20,11 +21,15 @@ pub fn load_settings(app_data_dir: &Path) -> AppSettings {
             Ok(s) => s,
             Err(_) => {
                 // Corrupt file — reset to defaults
+                log::warn!("Corrupt settings file, resetting to defaults: {}", path.display());
                 let _ = std::fs::remove_file(&path);
                 AppSettings::default()
             }
         },
-        Err(_) => AppSettings::default(),
+        Err(_) => {
+            log::warn!("Failed to read settings file, using defaults");
+            AppSettings::default()
+        }
     }
 }
 
@@ -34,6 +39,7 @@ pub fn load_settings(app_data_dir: &Path) -> AppSettings {
 pub fn save_settings(app_data_dir: &Path, settings: &AppSettings) {
     // Ensure directory exists
     if !app_data_dir.exists() && std::fs::create_dir_all(app_data_dir).is_err() {
+            log::warn!("Failed to create settings directory: {}", app_data_dir.display());
             return; // Can't create dir, skip save
     }
 
@@ -41,10 +47,13 @@ pub fn save_settings(app_data_dir: &Path, settings: &AppSettings) {
 
     match serde_json::to_string_pretty(settings) {
         Ok(json) => {
-            let _ = std::fs::write(&path, json);
+            if let Err(e) = std::fs::write(&path, &json) {
+                log::warn!("Failed to write settings: {}", e);
+            }
         }
         Err(_) => {
             // Serialization failure — skip save
+            log::warn!("Failed to serialize settings");
         }
     }
 }

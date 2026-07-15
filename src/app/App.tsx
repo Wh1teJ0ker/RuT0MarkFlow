@@ -13,6 +13,7 @@ import {
   getDocumentStatusDescriptor,
   withAppErrorContext,
 } from "../services/tauri";
+import { logger } from "../services/logger";
 import { selectWorkspace, refreshWorkspaceIndex, loadWorkspace, loadAppSettings, saveAppSettings } from "../modules/workspace/mod";
 import {
   openDocument,
@@ -270,7 +271,7 @@ function App() {
         return;
       }
 
-      const docResult = await openDocument(wsPath, docRelPath);
+      const docResult = await openDocument(docRelPath);
       setDocument(docResult.state);
       if (!docResult.error) {
         setStatusMessage(`已恢复工作区与文档: ${docResult.state.title}`);
@@ -305,7 +306,7 @@ function App() {
   // handler can conditionally prevent_close().
   useEffect(() => {
     invoke("set_document_dirty", { dirty: document.isDirty }).catch((err) => {
-      console.error("Failed to sync dirty state to Rust:", err);
+      logger.error("Failed to sync dirty state to Rust", { error: err instanceof Error ? err.message : String(err) });
     });
   }, [document.isDirty]);
 
@@ -322,7 +323,7 @@ function App() {
 
   const refreshIndex = useCallback(async () => {
     if (!workspace) return;
-    const result = await refreshWorkspaceIndex(workspace.rootPath);
+    const result = await refreshWorkspaceIndex();
     if (result.state === "ready") {
       setWorkspaceState("ready");
       setWorkspaceError(null);
@@ -391,11 +392,12 @@ function App() {
           if (action === "cancel") return;
         }
         await getCurrentWindow().destroy().catch((err) => {
-          console.error("Window destroy failed:", err);
+          logger.error("Window destroy failed", { error: err instanceof Error ? err.message : String(err) });
         });
       });
+      logger.info("Close-requested listener registered");
     })().catch((err) => {
-      console.error("Failed to register close-requested listener:", err);
+      logger.error("Failed to register close-requested listener", { error: err instanceof Error ? err.message : String(err) });
     });
     return () => { unlisten?.(); };
   }, []);
@@ -414,8 +416,9 @@ function App() {
         }
         await wsRefreshIndexRef.current();
       });
+      logger.info("Index-changed listener registered");
     })().catch((err) => {
-      console.error("Failed to register workspace://index-changed listener:", err);
+      logger.error("Failed to register workspace://index-changed listener", { error: err instanceof Error ? err.message : String(err) });
     });
     return () => { unlisten?.(); };
   }, []);
@@ -432,18 +435,22 @@ function App() {
     setSaveError(null);
     setStatusMessage("正在保存…");
 
+    // Capture a content snapshot before the async save call so that typing
+    // during save doesn't get mis-marked as saved. The success handler
+    // recomputes isDirty by comparing the latest content with this snapshot.
+    const contentToSave = document.content;
+
     const result = await saveDocument(
-      workspace.rootPath,
       document.relativePath,
-      document.content,
+      contentToSave,
     );
 
     if (result.success) {
       setDocument((prev) => ({
         ...prev,
         isSaving: false,
-        isDirty: false,
-        lastSavedContent: prev.content,
+        isDirty: prev.content !== contentToSave,
+        lastSavedContent: contentToSave,
       }));
       setSaveError(null);
       setStatusMessage(`已保存: ${document.title}`);
@@ -473,7 +480,7 @@ function App() {
       ? "未命名.md"
       : document.title || "document.md";
 
-    const picked = await pickSavePath(workspace.rootPath, defaultName);
+    const picked = await pickSavePath(defaultName);
     if (picked.cancelled) {
       setSaveError(null);
       setStatusMessage("已取消另存为");
@@ -488,6 +495,7 @@ function App() {
     if (!picked.path) return false;
 
     const targetPath = picked.path.absolutePath;
+    const saveToken = picked.path.saveToken;
     const isWithin = picked.path.isWithinWorkspace;
     const relPath = picked.path.relativePath;
 
@@ -495,19 +503,24 @@ function App() {
     setSaveError(null);
     setStatusMessage("正在保存…");
 
-    const result = await saveDocumentAs(workspace.rootPath, targetPath, document.content);
+    // Capture a content snapshot before the async save-as call so that
+    // typing during the operation isn't lost and isn't mis-marked as saved.
+    const contentToSave = document.content;
+
+    const result = await saveDocumentAs(saveToken, contentToSave);
 
     if (result.success) {
-      setDocument({
+      setDocument((prev) => ({
+        ...prev,
         path: relPath || targetPath,
         relativePath: relPath,
         title: relPath || targetPath,
-        content: document.content,
-        lastSavedContent: document.content,
-        isDirty: false,
+        content: prev.content,
+        lastSavedContent: contentToSave,
+        isDirty: prev.content !== contentToSave,
         isSaving: false,
         isNew: false,
-      });
+      }));
       setSaveError(null);
       if (isWithin) {
         await refreshIndex();
@@ -603,10 +616,37 @@ function App() {
       if (action === "cancel") return;
       // action === "discard": fall through
     }
+
+    // Snapshot the current context before mutating. If the user cancels the
+    // picker we restore this snapshot so the existing workspace/document is
+    // preserved instead of being cleared.
+    const prevWorkspaceState = workspaceState;
+    const prevWorkspace = workspace;
+    const prevWorkspaceError = workspaceError;
+    const prevFileCount = fileCount;
+    const prevIndexTree = indexTree;
+    const prevDocument = document;
+    const prevSaveError = saveError;
+
     history.clear();
     setWorkspaceState("loading");
     setStatusMessage("正在扫描 Markdown 文件…");
     const result = await selectWorkspace();
+
+    if (result.cancelled) {
+      // User dismissed the picker: restore the previous context untouched.
+      history.clear();
+      setWorkspaceState(prevWorkspaceState);
+      setWorkspace(prevWorkspace);
+      setWorkspaceError(prevWorkspaceError);
+      setFileCount(prevFileCount);
+      setIndexTree(prevIndexTree);
+      setSaveError(prevSaveError);
+      setDocument(prevDocument);
+      setStatusMessage("已取消选择工作区");
+      return;
+    }
+
     setWorkspaceState(result.state);
     setWorkspace(result.workspace);
     setWorkspaceError(result.error);
@@ -625,7 +665,7 @@ function App() {
     } else {
       setStatusMessage("就绪");
     }
-  }, [document.isDirty, history]);
+  }, [document, workspaceState, workspace, workspaceError, fileCount, indexTree, saveError, history]);
 
   const [isDocumentOpening, setIsDocumentOpening] = useState(false);
   const [pendingDocumentPath, setPendingDocumentPath] = useState<string | null>(null);
@@ -655,7 +695,7 @@ function App() {
       setPendingDocumentPath(relativePath);
       setStatusMessage(`正在打开: ${relativePath}…`);
 
-      const result = await openDocument(workspace.rootPath, relativePath);
+      const result = await openDocument(relativePath);
 
       // latest-request-wins: discard stale responses
       if (requestId !== openReqCounterRef.current) {
@@ -806,7 +846,7 @@ function App() {
           handleCloseDocument();
         } else {
           getCurrentWindow().destroy().catch((err) => {
-            console.error("Window destroy failed:", err);
+            logger.error("Window destroy failed (keyboard shortcut)", { error: err instanceof Error ? err.message : String(err) });
           });
         }
       } else if (meta && (e.key === "f" || e.key === "F")) {

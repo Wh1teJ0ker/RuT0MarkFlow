@@ -99,4 +99,45 @@ describe("postprocessMath", () => {
     const result = postprocessMath(html, placeholders, mathErrors);
     expect(result).toContain("katex-display");
   });
+
+  it("wraps rendered math with source-recovery attributes (T10)", () => {
+    const html = "<p>__MATH_BLOCK_0__</p>";
+    const mathErrors: string[] = [];
+    const placeholders = [{
+      placeholder: "__MATH_BLOCK_0__",
+      formula: "x = y",
+      display: true,
+    }];
+    const result = postprocessMath(html, placeholders, mathErrors);
+    // Block math wraps in a div carrying the formula source + display flag.
+    expect(result).toContain('class="math-block math-source-block"');
+    expect(result).toContain('data-formula-source="x = y"');
+    expect(result).toContain('data-formula-display="true"');
+  });
+
+  it("wraps inline math with span source-recovery attributes (T10)", () => {
+    const html = "<p>__MATH_INLINE_0__</p>";
+    const mathErrors: string[] = [];
+    const placeholders = [{
+      placeholder: "__MATH_INLINE_0__",
+      formula: "a^2",
+      display: false,
+    }];
+    const result = postprocessMath(html, placeholders, mathErrors);
+    expect(result).toContain('class="math-inline math-source-block"');
+    expect(result).toContain('data-formula-source="a^2"');
+    expect(result).toContain('data-formula-display="false"');
+  });
+
+  it("escapes quotes in formula source attribute", () => {
+    const html = "<p>__MATH_BLOCK_0__</p>";
+    const mathErrors: string[] = [];
+    const placeholders = [{
+      placeholder: "__MATH_BLOCK_0__",
+      formula: 'a "b" c',
+      display: true,
+    }];
+    const result = postprocessMath(html, placeholders, mathErrors);
+    expect(result).toContain('data-formula-source="a &quot;b&quot; c"');
+  });
 });

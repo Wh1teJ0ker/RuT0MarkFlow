@@ -13,8 +13,18 @@ struct VersionManifest {
 }
 
 fn load_version_manifest() -> VersionManifest {
-    serde_json::from_str(include_str!("../../../version-manifest.json"))
-        .expect("version-manifest.json must be valid")
+    match serde_json::from_str(include_str!("../../../version-manifest.json")) {
+        Ok(m) => m,
+        Err(e) => {
+            log::error!("version-manifest.json parse failed: {}, using fallback", e);
+            VersionManifest {
+                app_version: "0.1.0".to_string(),
+                frontend_version: "0.1.0".to_string(),
+                backend_version: "0.1.0".to_string(),
+                workspace_schema_version: "1.0.0".to_string(),
+            }
+        }
+    }
 }
 
 /// Health check command — verifies the Rust backend is alive and responsive.

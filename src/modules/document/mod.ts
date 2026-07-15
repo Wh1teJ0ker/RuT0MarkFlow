@@ -1,4 +1,5 @@
 import { invokeTauriCommand } from "../../services/tauri";
+import { logger } from "../../services/logger";
 import type {
   AppErrorPayload,
   DocumentOpenResult,
@@ -8,14 +9,15 @@ import type {
 } from "../../types";
 
 /**
- * Open a Markdown document from the current workspace.
+ * Open a Markdown document from the current authorised workspace.
+ *
+ * The workspace root is read from the Rust-side AppState; the front-end no
+ * longer supplies a `rootPath`.
  */
 export async function openDocument(
-  rootPath: string,
   relativePath: string,
 ): Promise<{ state: DocumentState; error?: AppErrorPayload }> {
   const result = await invokeTauriCommand<DocumentOpenResult>("open_document", {
-    rootPath,
     relativePath,
   }, {
     domain: "document",
@@ -27,6 +29,7 @@ export async function openDocument(
 
   if (result.success && result.data) {
     const doc = result.data;
+    logger.info("Document opened", { relativePath });
     return {
       state: {
         path: doc.path,
@@ -42,6 +45,7 @@ export async function openDocument(
   }
 
   const error = result.error;
+  logger.warn("Failed to open document", { relativePath, code: error?.code, message: error?.message });
   return {
     state: {
       path: null,
@@ -60,14 +64,15 @@ export async function openDocument(
 
 /**
  * Save content to an existing Markdown document (overwrite).
+ *
+ * The workspace root is read from the Rust-side AppState; the front-end no
+ * longer supplies a `rootPath`.
  */
 export async function saveDocument(
-  rootPath: string,
   relativePath: string,
   content: string,
 ): Promise<{ success: boolean; error?: AppErrorPayload }> {
   const result = await invokeTauriCommand<DocumentSaveResult>("save_document", {
-    rootPath,
     relativePath,
     content,
   }, {
@@ -79,8 +84,10 @@ export async function saveDocument(
   });
 
   if (result.success && result.data) {
+    logger.info("Document saved", { relativePath });
     return { success: true };
   }
+  logger.warn("Failed to save document", { relativePath, code: result.error?.code, message: result.error?.message });
   return {
     success: false,
     error: result.error ?? undefined,
@@ -89,9 +96,11 @@ export async function saveDocument(
 
 /**
  * Open the system save-as dialog and return the selected path info.
+ *
+ * The workspace root is read from the Rust-side AppState to determine
+ * whether the picked path falls within the authorised workspace.
  */
 export async function pickSavePath(
-  rootPath: string,
   defaultName: string,
 ): Promise<{
   cancelled: boolean;
@@ -99,7 +108,6 @@ export async function pickSavePath(
   error?: AppErrorPayload;
 }> {
   const result = await invokeTauriCommand<PickSavePathResult>("pick_save_path", {
-    rootPath,
     defaultName,
   }, {
     domain: "document",
@@ -110,6 +118,7 @@ export async function pickSavePath(
   });
 
   if (result.error?.code === "CANCELLED") {
+    logger.debug("Save path picker cancelled");
     return { cancelled: true };
   }
 
@@ -117,6 +126,7 @@ export async function pickSavePath(
     return { cancelled: false, path: result.data };
   }
 
+  logger.warn("Failed to pick save path", { code: result.error?.code, message: result.error?.message });
   return {
     cancelled: false,
     error: result.error ?? undefined,
@@ -125,15 +135,18 @@ export async function pickSavePath(
 
 /**
  * Save content to a new target path (save-as).
+ *
+ * The target path is no longer supplied by the front-end. Instead the
+ * one-time `saveToken` returned by `pickSavePath` is passed back; the Rust
+ * side consumes the token and reads the bound path from AppState, so a
+ * compromised webview cannot forge an arbitrary target path.
  */
 export async function saveDocumentAs(
-  rootPath: string,
-  targetPath: string,
+  saveToken: string,
   content: string,
 ): Promise<{ success: boolean; error?: AppErrorPayload }> {
   const result = await invokeTauriCommand<DocumentSaveResult>("save_document_as", {
-    rootPath,
-    targetPath,
+    saveToken,
     content,
   }, {
     domain: "document",
@@ -144,8 +157,10 @@ export async function saveDocumentAs(
   });
 
   if (result.success && result.data) {
+    logger.info("Document saved as new file");
     return { success: true };
   }
+  logger.warn("Failed to save document as", { code: result.error?.code, message: result.error?.message });
   return {
     success: false,
     error: result.error ?? undefined,

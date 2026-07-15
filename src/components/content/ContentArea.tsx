@@ -1,8 +1,10 @@
 import { useCallback, useRef, useEffect } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getAppErrorDisplay } from "../../services/tauri";
+import { logger } from "../../services/logger";
 import type { DocumentState, ViewMode } from "../../types";
 import FindBar from "./FindBar";
+import ImmersiveEditor from "./ImmersiveEditor";
 
 interface ContentAreaProps {
   document: DocumentState;
@@ -74,10 +76,18 @@ function ContentArea({
     const handler = (e: Event) => {
       const img = e.target as HTMLImageElement;
       if (img.tagName !== "IMG") return;
-      // Replace with placeholder
+      // Replace with placeholder built via DOM API + textContent to avoid
+      // outerHTML string concatenation (prevents secondary HTML injection
+      // from malicious src/alt values).
       const src = img.getAttribute("src") || "";
       const alt = img.getAttribute("alt") || "";
-      img.outerHTML = `<span class="image-error" data-failed-src="${src}" title="图片加载失败: ${src}">[图片: ${alt || src}]</span>`;
+      const placeholder = window.document.createElement("span");
+      placeholder.className = "image-error";
+      placeholder.setAttribute("data-failed-src", src);
+      placeholder.setAttribute("title", `图片加载失败: ${src}`);
+      placeholder.textContent = `[图片: ${alt || src}]`;
+      img.replaceWith(placeholder);
+      logger.warn("Image load failed", { src });
       onImageError?.(src || alt || "unknown");
     };
 
@@ -118,7 +128,9 @@ function ContentArea({
         e.preventDefault();
         const href = anchor.getAttribute("href");
         if (href) {
-          openUrl(href);
+          openUrl(href).catch((err) => {
+            logger.error("Failed to open URL", { href, error: err instanceof Error ? err.message : String(err) });
+          });
         }
         return;
       }
@@ -267,19 +279,15 @@ function ContentArea({
           <span className="content-document-title">{document.title}</span>
         </div>
         <FindBar open={isFindBarOpen} onClose={onCloseFindBar!} containerRef={previewRef} />
-        <div
-          className="content-render-preview markdown-body"
-          ref={previewRef}
+        <ImmersiveEditor
+          content={document.content}
+          renderedHtml={renderedHtml}
+          isRenderPending={isRenderPending}
+          onContentChange={onContentChange}
+          onOpenDocument={onOpenDocument}
+          previewRef={previewRef}
           onClick={handlePreviewClick}
-        >
-          {isRenderPending ? (
-            <div className="render-loading">渲染中…</div>
-          ) : renderedHtml ? (
-            <div dangerouslySetInnerHTML={{ __html: renderedHtml }} />
-          ) : (
-            <pre className="content-fallback-text">{document.content}</pre>
-          )}
-        </div>
+        />
       </div>
     );
   }

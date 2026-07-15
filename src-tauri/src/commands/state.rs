@@ -47,7 +47,13 @@ pub fn save_app_settings(app: tauri::AppHandle, settings: AppSettings) -> Comman
 /// the window event handler can conditionally call `prevent_close()`.
 #[tauri::command]
 pub fn set_document_dirty(state: State<'_, DocumentDirtyState>, dirty: bool) {
-    let mut guard = state.0.lock().unwrap();
+    let mut guard = match state.0.lock() {
+        Ok(g) => g,
+        Err(poisoned) => {
+            log::error!("DocumentDirtyState mutex poisoned in set_document_dirty, recovering");
+            poisoned.into_inner()
+        }
+    };
     *guard = dirty;
 }
 

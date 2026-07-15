@@ -4,9 +4,12 @@ import { sanitizeHtml } from "./sanitize";
 import { preprocessMath, postprocessMath } from "./math";
 import { resolveResources } from "./resource";
 import { splitMarkdown } from "./chunker";
+import { logger } from "../logger";
 
 // Re-export chunker so useRender can import it from the same barrel
 export { splitMarkdown } from "./chunker";
+// Re-export DOM → Markdown deserialization (used by ImmersiveEditor)
+export { deserializeHtmlToMarkdown } from "./serialize";
 
 // ── Marked global configuration ─────────────────────────────────
 // gfm: true enables tables, task lists, strikethrough, etc.
@@ -39,6 +42,8 @@ export function renderMarkdown(
     return { html: "", errors, hasDegradedBlocks: false, imageErrors, mathErrors };
   }
 
+  logger.debug("Rendering markdown", { contentLength: content.length });
+
   // ── Step 0: Normalize CRLF → LF ─────────────────────────────
   // Windows files use \r\n line endings; marked's breaks:true converts
   // \n to <br>, but residual \r causes rendering artifacts (extra spaces,
@@ -58,6 +63,7 @@ export function renderMarkdown(
   } catch (e) {
     errors.push(`数学公式预处理失败: ${e instanceof Error ? e.message : String(e)}`);
     hasDegradedBlocks = true;
+    logger.warn("Math preprocessing failed", { error: e instanceof Error ? e.message : String(e) });
   }
 
   // ── Step 2: Markdown → HTML ─────────────────────────────────
@@ -66,6 +72,7 @@ export function renderMarkdown(
     rawHtml = marked.parse(processed, { async: false }) as string;
   } catch (e) {
     errors.push(`Markdown 渲染失败: ${e instanceof Error ? e.message : String(e)}`);
+    logger.warn("Markdown parse failed", { error: e instanceof Error ? e.message : String(e) });
     return {
       html: `<div class="render-error"><p>渲染失败: ${e instanceof Error ? e.message : String(e)}</p></div>`,
       errors, hasDegradedBlocks: true, imageErrors, mathErrors,
@@ -86,10 +93,7 @@ export function renderMarkdown(
       const entityCount = (rawHtml.match(/&[#a-zA-Z0-9]+;/g) || []).length;
       const doubleEncodedCount = (rawHtml.match(/&amp;[#a-zA-Z]/g) || []).length;
       if (doubleEncodedCount > entityCount * 0.1) {
-        console.warn(
-          `[RuT0MarkFlow] Possible double-encoding detected: ${doubleEncodedCount} &amp; in ${entityCount} entities. ` +
-          `Check DOMPurify configuration. Sample: ${rawHtml.slice(0, 200)}`,
-        );
+        logger.warn("Possible double-encoding detected", { doubleEncodedCount, entityCount, sample: rawHtml.slice(0, 200) });
       }
     }
   } catch (_e) {
@@ -109,6 +113,7 @@ export function renderMarkdown(
   } catch (e) {
     errors.push(`资源解析失败: ${e instanceof Error ? e.message : String(e)}`);
     hasDegradedBlocks = true;
+    logger.warn("Resource resolution failed", { error: e instanceof Error ? e.message : String(e) });
   }
 
   // ── Step 4: Post-process math (render KaTeX) ────────────────
@@ -118,6 +123,7 @@ export function renderMarkdown(
   } catch (e) {
     errors.push(`公式渲染失败: ${e instanceof Error ? e.message : String(e)}`);
     hasDegradedBlocks = true;
+    logger.warn("Math postprocessing failed", { error: e instanceof Error ? e.message : String(e) });
   }
 
   // ── Step 5: Sanitize HTML ───────────────────────────────────
@@ -126,6 +132,7 @@ export function renderMarkdown(
     safeHtml = sanitizeHtml(rawHtml);
   } catch (e) {
     errors.push(`HTML 净化失败: ${e instanceof Error ? e.message : String(e)}`);
+    logger.warn("HTML sanitization failed", { error: e instanceof Error ? e.message : String(e) });
     return {
       html: `<div class="render-error"><p>HTML 净化失败</p></div>`,
       errors, hasDegradedBlocks: true, imageErrors, mathErrors,
@@ -138,23 +145,18 @@ export function renderMarkdown(
     const hasChineseSafe = /[\u4e00-\u9fff]/.test(safeHtml);
     const hasChineseRaw = /[\u4e00-\u9fff]/.test(rawHtml);
     if (hasChineseRaw && !hasChineseSafe && rawHtml.length > 0) {
-      console.warn(
-        `[RuT0MarkFlow] DOMPurify stripped Chinese characters! ` +
-        `Raw had Chinese, safe does not. DOMPurify may need explicit window. ` +
-        `Sample raw: ${rawHtml.slice(0, 100)} / safe: ${safeHtml.slice(0, 100)}`,
-      );
+      logger.warn("DOMPurify stripped Chinese characters", { rawSample: rawHtml.slice(0, 100), safeSample: safeHtml.slice(0, 100) });
     }
     const ampCount = (safeHtml.match(/&amp;/g) || []).length;
     const rawAmpCount = (rawHtml.match(/&amp;/g) || []).length;
     if (ampCount > rawAmpCount && ampCount > 0) {
-      console.warn(
-        `[RuT0MarkFlow] DOMPurify added ${ampCount - rawAmpCount} extra &amp; entities. ` +
-        `Check DOMPurify configuration.`,
-      );
+      logger.warn("DOMPurify added extra &amp; entities", { extraCount: ampCount - rawAmpCount });
     }
   } catch (_e) {
     // Logging must never break rendering
   }
+
+  logger.debug("Render complete", { htmlLength: safeHtml.length, errorCount: errors.length, imageErrorCount: imageErrors.length, mathErrorCount: mathErrors.length, degraded: hasDegradedBlocks });
 
   return {
     html: safeHtml,

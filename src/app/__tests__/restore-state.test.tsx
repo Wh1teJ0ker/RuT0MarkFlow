@@ -50,7 +50,7 @@ describe("restore chain: loadSettings → loadWorkspace → conditional openDocu
     expect(wsResult.workspace?.rootPath).toBe("/ws");
 
     const { openDocument } = await import("../../modules/document/mod");
-    const docResult = await openDocument("/ws", "readme.md");
+    const docResult = await openDocument("readme.md");
     expect(docResult.error).toBeUndefined();
     expect(docResult.state.content).toBe("# Hello");
   });
@@ -77,7 +77,7 @@ describe("restore chain: loadSettings → loadWorkspace → conditional openDocu
     expect(wsResult.state).toBe("ready");
 
     const { openDocument } = await import("../../modules/document/mod");
-    const docResult = await openDocument("/ws", "nonexistent.md");
+    const docResult = await openDocument("nonexistent.md");
     expect(docResult.error).toBeTruthy();
   });
 });
@@ -226,7 +226,7 @@ it("restore effect must not set flag until all async operations finish", async (
     expect(wsResult.workspace).not.toBeNull();
 
     const { openDocument } = await import("../../modules/document/mod");
-    const docResult = await openDocument("/ws", "missing.md");
+    const docResult = await openDocument("missing.md");
     expect(docResult.error).toBeTruthy();
   });
 });

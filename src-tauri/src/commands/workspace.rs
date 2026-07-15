@@ -1,3 +1,4 @@
+use crate::app_state::AppState;
 use crate::models::response::CommandResponse;
 use crate::models::workspace::{IndexEntry, WorkspaceInfo, WorkspaceLoadResult};
 use crate::modules::workspace::indexer;
@@ -128,9 +129,13 @@ fn build_workspace_result(scan: ScanResult) -> WorkspaceLoadResult {
 /// but the scanning & index-building runs on the Tauri thread pool via
 /// `spawn_blocking` so the webview stays responsive during scanning.
 ///
-/// On success, automatically starts the file-system watcher for this workspace.
+/// On success, automatically starts the file-system watcher for this workspace
+/// and stores the canonicalised root in `AppState.authorized_workspace`.
 #[tauri::command]
-pub async fn select_workspace(app: tauri::AppHandle) -> CommandResponse<WorkspaceLoadResult> {
+pub async fn select_workspace(
+    app: tauri::AppHandle,
+) -> CommandResponse<WorkspaceLoadResult> {
+    let app_state: tauri::State<'_, AppState> = app.state();
     // ── Step 1: Open system folder picker (sync, main thread) ──
     let folder = app.dialog().file().blocking_pick_folder();
 
@@ -198,20 +203,61 @@ pub async fn select_workspace(app: tauri::AppHandle) -> CommandResponse<Workspac
         }
     };
 
-    let result = build_workspace_result(scan);
+    // ── Step 3b: Authorise the workspace in AppState ─────────
+    let canonical_root = match app_state.authorize(&scan.root_path) {
+        Ok(p) => p,
+        Err(e) => {
+            return CommandResponse::error(
+                "WORKSPACE_AUTHORIZE_FAILED",
+                &e,
+                Some(scan.root_path.clone()),
+                true,
+            );
+        }
+    };
+    let canonical_root_str = canonical_root.to_string_lossy().to_string();
+
+    // ── Step 3c: Register the workspace with the asset protocol scope ──
+    // The static scope in tauri.conf.json no longer covers $HOME/**, so the
+    // authorised workspace root must be registered at runtime for asset://
+    // image loading to work.
+    register_asset_scope(&app, &canonical_root);
+
+    let mut result = build_workspace_result(scan);
+    // Normalise the returned root_path to the canonical form so the
+    // front-end and watcher agree on the authorised path.
+    result.workspace.root_path = canonical_root_str.clone();
 
     // ── Step 4: Auto-start watcher (after scan, on main executor) ──
-    start_watcher_for_workspace(&result.workspace.root_path, &app);
+    start_watcher_for_workspace(&canonical_root_str, &app);
 
+    log::info!("Workspace selected: {}", canonical_root.display());
     CommandResponse::success_with_data(result)
 }
 
 /// Refresh the workspace index without opening a dialog.
 ///
-/// Runs the scan + index-build on the Tauri thread pool so the webview
-/// stays responsive during scanning.
+/// Reads the authorised workspace root from `AppState` — the front-end no
+/// longer supplies a `root_path`. Runs the scan + index-build on the Tauri
+/// thread pool so the webview stays responsive during scanning.
 #[tauri::command]
-pub async fn refresh_workspace_index(root_path: String) -> CommandResponse<WorkspaceLoadResult> {
+pub async fn refresh_workspace_index(
+    app: tauri::AppHandle,
+) -> CommandResponse<WorkspaceLoadResult> {
+    log::info!("Refreshing workspace index");
+    let app_state: tauri::State<'_, AppState> = app.state();
+    let root_path = match app_state.require_root() {
+        Ok(p) => p,
+        Err(e) => {
+            return CommandResponse::error(
+                "WORKSPACE_NOT_AUTHORIZED",
+                &e,
+                None,
+                true,
+            );
+        }
+    };
+
     let scan_path = root_path.clone();
     let scan_result = tauri::async_runtime::spawn_blocking(move || {
         run_scan(&scan_path)
@@ -239,17 +285,21 @@ pub async fn refresh_workspace_index(root_path: String) -> CommandResponse<Works
     };
 
     let result = build_workspace_result(scan);
+    log::info!("Index refreshed: {} files", result.workspace.file_count);
     CommandResponse::success_with_data(result)
 }
 
 /// Load a workspace by path (no dialog). Used for startup recovery.
 ///
-/// On success, automatically starts the file-system watcher for this workspace.
+/// On success, automatically starts the file-system watcher for this workspace
+/// and stores the canonicalised root in `AppState.authorized_workspace`. This
+/// is the recovery path that (re)authorises the workspace at startup.
 #[tauri::command]
 pub async fn load_workspace(
     app: tauri::AppHandle,
     root_path: String,
 ) -> CommandResponse<WorkspaceLoadResult> {
+    let app_state: tauri::State<'_, AppState> = app.state();
     let scan_path = root_path.clone();
     let scan_result = tauri::async_runtime::spawn_blocking(move || {
         run_scan(&scan_path)
@@ -276,12 +326,54 @@ pub async fn load_workspace(
         }
     };
 
-    let result = build_workspace_result(scan);
+    // ── Authorise the workspace in AppState ────────────────────
+    let canonical_root = match app_state.authorize(&scan.root_path) {
+        Ok(p) => p,
+        Err(e) => {
+            return CommandResponse::error(
+                "WORKSPACE_AUTHORIZE_FAILED",
+                &e,
+                Some(scan.root_path.clone()),
+                true,
+            );
+        }
+    };
+    let canonical_root_str = canonical_root.to_string_lossy().to_string();
+
+    // ── Register the workspace with the asset protocol scope ──────
+    register_asset_scope(&app, &canonical_root);
+
+    let mut result = build_workspace_result(scan);
+    result.workspace.root_path = canonical_root_str.clone();
 
     // ── Auto-start watcher (after scan, on main executor) ─────
-    start_watcher_for_workspace(&result.workspace.root_path, &app);
+    start_watcher_for_workspace(&canonical_root_str, &app);
 
+    log::info!("Workspace loaded: {} ({} files)", canonical_root_str, result.workspace.file_count);
     CommandResponse::success_with_data(result)
+}
+
+/// Register the canonical workspace root with the Tauri asset protocol scope
+/// so that `asset://` requests for files under the authorised workspace are
+/// accepted by the runtime.
+///
+/// `tauri.conf.json` only ships the static `$APPDATA/**` / `$RESOURCE/**`
+/// scope entries; the user-chosen workspace (typically under `$HOME`) is
+/// registered at runtime after `AppState::authorize` succeeds. This keeps the
+/// static scope narrow (no `$HOME/**` wildcard) while still letting authorised
+/// workspace images load through `convertFileSrc`.
+///
+/// Failure to extend the scope is non-fatal: the workspace continues to work
+/// for text I/O, but image assets under it would be rejected by the asset
+/// protocol. The error is logged to stderr for diagnostics.
+fn register_asset_scope(app: &tauri::AppHandle, canonical_root: &std::path::Path) {
+    // `asset_protocol_scope()` returns a `Scope` directly (not a Result) in
+    // Tauri 2.11.x. `allow_directory` extends the runtime scope with the
+    // given directory; recursive = true covers workspace subdirectories.
+    let scope = app.asset_protocol_scope();
+    if let Err(e) = scope.allow_directory(canonical_root, true) {
+        log::warn!("asset scope 注册失败（图片可能无法加载）: {}", e);
+    }
 }
 
 /// Start the file-system watcher for the given workspace root path.
@@ -302,17 +394,33 @@ fn start_watcher_for_workspace(root_path: &str, app: &tauri::AppHandle) {
             }
         }
         Err(e) => {
-            eprintln!("[RuT0MarkFlow] watcher 启动失败（降级为手动刷新）: {}", e);
+            log::warn!("watcher 启动失败（降级为手动刷新）: {}", e);
         }
     }
 }
 
-/// Manually start the workspace watcher for the current workspace.
+/// Manually start the workspace watcher for the current authorised workspace.
+///
+/// Reads the root path from `AppState` — the front-end no longer supplies a
+/// `root_path`. Stops any previously-running watcher first. Failure to start
+/// is non-fatal: the workspace continues to work with manual refresh only.
 #[tauri::command]
 pub fn start_workspace_watcher(
     app: tauri::AppHandle,
-    root_path: String,
 ) -> CommandResponse<String> {
+    let app_state: tauri::State<'_, AppState> = app.state();
+    let root_path = match app_state.require_root() {
+        Ok(p) => p,
+        Err(e) => {
+            return CommandResponse::error(
+                "WORKSPACE_NOT_AUTHORIZED",
+                &e,
+                None,
+                true,
+            );
+        }
+    };
+
     let state: tauri::State<'_, Mutex<watcher::WatcherState>> = app.state();
 
     watcher::stop_watcher(&state);
@@ -322,6 +430,7 @@ pub fn start_workspace_watcher(
             if let Ok(mut guard) = state.lock() {
                 guard.watcher = Some(w);
             }
+            log::info!("Workspace watcher started");
             CommandResponse::success_with_data("watcher 已启动".to_string())
         }
         Err(e) => CommandResponse::error(
@@ -338,6 +447,7 @@ pub fn start_workspace_watcher(
 pub fn stop_workspace_watcher(app: tauri::AppHandle) -> CommandResponse<String> {
     let state: tauri::State<'_, Mutex<watcher::WatcherState>> = app.state();
     watcher::stop_watcher(&state);
+    log::info!("Workspace watcher stopped");
     CommandResponse::success_with_data("watcher 已停止".to_string())
 }
 

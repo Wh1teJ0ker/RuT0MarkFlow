@@ -27,9 +27,11 @@ pub struct UpdateInstallResult {
 /// Errors are returned as structured error responses (domain: system, operation: check-update).
 #[tauri::command]
 pub async fn check_for_updates(app: AppHandle) -> CommandResponse<UpdateCheckResult> {
+    log::info!("Checking for updates...");
     let updater = match app.updater() {
         Ok(u) => u,
         Err(e) => {
+            log::warn!("Update check failed: {}", e);
             return CommandResponse::error(
                 "UPDATE_CHECK_FAILED",
                 &format!("更新检查器初始化失败: {}", e),
@@ -42,6 +44,7 @@ pub async fn check_for_updates(app: AppHandle) -> CommandResponse<UpdateCheckRes
     let update = match updater.check().await {
         Ok(Some(u)) => u,
         Ok(None) => {
+            log::info!("No update available");
             return CommandResponse::success_with_data(UpdateCheckResult {
                 available: false,
                 version: None,
@@ -50,6 +53,7 @@ pub async fn check_for_updates(app: AppHandle) -> CommandResponse<UpdateCheckRes
             });
         }
         Err(e) => {
+            log::warn!("Update check failed: {}", e);
             return CommandResponse::error(
                 "UPDATE_CHECK_FAILED",
                 &format!("检查更新失败: {}", e),
@@ -59,6 +63,7 @@ pub async fn check_for_updates(app: AppHandle) -> CommandResponse<UpdateCheckRes
         }
     };
 
+    log::info!("Update available: version {}", update.version);
     CommandResponse::success_with_data(UpdateCheckResult {
         available: true,
         version: Some(update.version.clone()),
@@ -73,9 +78,11 @@ pub async fn check_for_updates(app: AppHandle) -> CommandResponse<UpdateCheckRes
 /// Returns whether the process was initiated successfully.
 #[tauri::command]
 pub async fn install_update(app: AppHandle) -> CommandResponse<UpdateInstallResult> {
+    log::info!("Installing update...");
     let updater = match app.updater() {
         Ok(u) => u,
         Err(e) => {
+            log::warn!("Update check failed: {}", e);
             return CommandResponse::error(
                 "UPDATE_INSTALL_FAILED",
                 &format!("更新检查器初始化失败: {}", e),
@@ -96,6 +103,7 @@ pub async fn install_update(app: AppHandle) -> CommandResponse<UpdateInstallResu
             );
         }
         Err(e) => {
+            log::warn!("Update check failed: {}", e);
             return CommandResponse::error(
                 "UPDATE_INSTALL_FAILED",
                 &format!("检查更新失败: {}", e),
@@ -107,20 +115,28 @@ pub async fn install_update(app: AppHandle) -> CommandResponse<UpdateInstallResu
 
     // No-op progress callbacks — we don't need to report download progress to the user
     // for the MVP. The update downloads silently in the background.
-    let on_chunk = |_downloaded: usize, _total: Option<u64>| {};
+    let on_chunk = |downloaded: usize, total: Option<u64>| {
+        log::debug!("Update download progress: {} / {:?}", downloaded, total);
+    };
     let on_done = || {};
 
     match update.download_and_install(on_chunk, on_done).await {
-        Ok(_) => CommandResponse::success_with_data(UpdateInstallResult {
-            success: true,
-            restarted: true,
-        }),
-        Err(e) => CommandResponse::error(
-            "UPDATE_INSTALL_FAILED",
-            &format!("更新安装失败: {}", e),
-            None,
-            true,
-        ),
+        Ok(_) => {
+            log::info!("Update installed, restarting");
+            CommandResponse::success_with_data(UpdateInstallResult {
+                success: true,
+                restarted: true,
+            })
+        }
+        Err(e) => {
+            log::error!("Update install failed: {}", e);
+            CommandResponse::error(
+                "UPDATE_INSTALL_FAILED",
+                &format!("更新安装失败: {}", e),
+                None,
+                true,
+            )
+        }
     }
 }
 

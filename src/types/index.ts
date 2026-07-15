@@ -222,6 +222,8 @@ export interface DocumentSaveResult {
 }
 
 export interface PickSavePathResult {
+  /** One-time token bound to the picked path. Pass it to saveDocumentAs. */
+  saveToken: string;
   absolutePath: string;
   relativePath: string | null;
   isWithinWorkspace: boolean;

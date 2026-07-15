@@ -38,14 +38,19 @@ pub fn scan_markdown_files(root: &Path) -> Vec<(std::path::PathBuf, std::path::P
     if !root.is_dir() {
         return files;
     }
+    log::info!("Scanning workspace: {}", root.display());
     scan_dir(root, root, &mut files);
+    log::info!("Scan complete: {} files found", files.len());
     files
 }
 
 fn scan_dir(root: &Path, dir: &Path, files: &mut Vec<(std::path::PathBuf, std::path::PathBuf)>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
-        Err(_) => return, // skip unreadable directories
+        Err(_) => {
+            log::warn!("Cannot read directory: {} (skipping)", dir.display());
+            return;
+        }
     };
 
     for entry in entries.flatten() {

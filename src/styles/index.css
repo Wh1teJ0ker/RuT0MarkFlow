@@ -599,6 +599,53 @@ body,
   contain-intrinsic-size: auto 500px;
 }
 
+/* ── T9: ImmersiveEditor (contentEditable 无感编辑) ─────────── */
+.immersive-editor[contenteditable="true"] {
+  outline: none;
+  cursor: text;
+  /* 保留 content-render-preview 的滚动/内边距，额外稳定行高 */
+  line-height: 1.7;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.immersive-editor[contenteditable="true"]:focus {
+  outline: none;
+}
+
+/* 编辑态下让块级元素保持可点击光标定位 */
+.immersive-editor[contenteditable="true"] > * {
+  cursor: text;
+}
+
+/* 占位渲染态（空文档或无渲染结果）的 fallback 文本 */
+.immersive-editor[contenteditable="true"] > .content-fallback-text {
+  white-space: pre-wrap;
+}
+
+/*
+ * 渲染中加载态：用 CSS overlay 提示而不替换 DOM 内容。
+ * isRenderPending 期间容器保持上一次渲染的 DOM，避免丢失正在编辑
+ * 的输入与光标；仅在右上角叠加一个半透明加载徽标。
+ */
+.immersive-editor[contenteditable="true"][data-render-pending="true"] {
+  position: relative;
+}
+.immersive-editor[contenteditable="true"][data-render-pending="true"]::after {
+  content: "渲染中…";
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--color-surface, rgba(255, 255, 255, 0.8));
+  color: var(--color-text-muted, #888);
+  font-size: 12px;
+  font-style: italic;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
 /* ── Unsaved Confirm Dialog ────────────────────────────────── */
 .dialog-overlay {
   position: fixed;

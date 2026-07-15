@@ -9,11 +9,11 @@
  *   const result = await invokeTauriCommand<HealthCheckResult>("health_check");
  *
  * TODO:
- *  - Add request/response logging in debug mode
  *  - Add timeout / retry logic for idempotent commands
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { logger } from "../logger";
 import type {
   AppErrorDisplay,
   AppErrorDomain,
@@ -156,18 +156,27 @@ export async function invokeTauriCommand<T>(
   args?: Record<string, unknown>,
   errorContext?: AppErrorContext,
 ): Promise<CommandResponse<T>> {
+  const startTime = Date.now();
+  logger.debug("Tauri command invoked", { command, hasErrorContext: !!errorContext });
   try {
     const raw = await invoke<CommandResponse<T>>(command, args);
 
     if (!errorContext || raw.success) {
+      if (raw.success) {
+        logger.debug("Tauri command succeeded", { command, durationMs: Date.now() - startTime });
+      } else {
+        logger.warn("Tauri command returned error", { command, code: raw.error?.code, message: raw.error?.message });
+      }
       return raw;
     }
 
+    logger.warn("Tauri command returned error", { command, code: raw.error?.code, message: raw.error?.message });
     return {
       ...raw,
       error: withAppErrorContext(raw.error, errorContext),
     };
   } catch (err) {
+    logger.error("Tauri command invocation failed", { command, error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined });
     // Unexpected invocation-level error (e.g. command not found)
     const invokeError: AppErrorPayload = {
       code: "INVOKE_ERROR",

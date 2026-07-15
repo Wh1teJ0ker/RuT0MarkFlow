@@ -36,6 +36,7 @@ pub fn read_markdown_file(root_path: &str, relative_path: &str) -> Result<ReadRe
         .map_err(|_| format!("文件不存在: {}", relative_path))?;
 
     if !canonical.starts_with(&root) {
+        log::warn!("Path traversal rejected: {} (escapes workspace root)", relative_path);
         return Err("文件路径超出工作区范围".to_string());
     }
 
@@ -61,6 +62,7 @@ pub fn read_markdown_file(root_path: &str, relative_path: &str) -> Result<ReadRe
         .map_err(|_| "无法读取文件元信息".to_string())?;
     let file_size = metadata.len();
     if file_size > MAX_FILE_SIZE {
+        log::warn!("File too large: {} ({} bytes, max {})", relative_path, file_size, MAX_FILE_SIZE);
         return Err(format!(
             "文件过大（超过 10 MB），当前大小: {} bytes",
             file_size
@@ -78,6 +80,8 @@ pub fn read_markdown_file(root_path: &str, relative_path: &str) -> Result<ReadRe
     })?;
 
     let content = decode_content(&raw_bytes)?;
+
+    log::info!("Opened document: {} ({} bytes)", relative_path, file_size);
 
     let file_name = canonical
         .file_name()
@@ -127,15 +131,18 @@ fn decode_content(raw: &[u8]) -> Result<String, String> {
     // ── Fallback: try GBK (covers GBK, GB2312, GB18030) ────────
     let (decoded, _encoding_used, had_errors) = encoding_rs::GBK.decode(without_bom);
     if !had_errors {
+        log::debug!("File decoded as GBK/GB18030 fallback");
         return Ok(decoded.into_owned());
     }
 
     // ── Final: try GB18030 (broader charset) ───────────────────
     let (decoded, _encoding_used, had_errors) = encoding_rs::GB18030.decode(without_bom);
     if !had_errors {
+        log::debug!("File decoded as GBK/GB18030 fallback");
         return Ok(decoded.into_owned());
     }
 
+    log::warn!("File encoding decode failed (not UTF-8 or GBK)");
     Err("文件编码不是有效的 UTF-8 或 GBK/GB2312".to_string())
 }
 

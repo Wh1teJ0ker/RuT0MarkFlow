@@ -14,6 +14,9 @@ export default defineConfig({
     __FRONTEND_VERSION__: JSON.stringify(versionManifest.frontendVersion),
     __BACKEND_VERSION__: JSON.stringify(versionManifest.backendVersion),
     __WORKSPACE_SCHEMA_VERSION__: JSON.stringify(versionManifest.workspaceSchemaVersion),
+    __LOG_LEVEL__: JSON.stringify(
+      process.env.NODE_ENV === "development" ? "debug" : "info",
+    ),
   },
 
   // Prevent vite from obscuring rust errors

@@ -1,4 +1,5 @@
 import { invokeTauriCommand } from "../../services/tauri";
+import { logger } from "../logger";
 import type {
   UpdateCheckResult,
   UpdateInstallResult,
@@ -44,13 +45,19 @@ export function classifyUpdateError(error: AppErrorPayload): AppErrorPayload {
     /none of the fallback platforms .* were found in the response .*platforms.*object/i.test(msg);
 
   if (isNetworkError) {
-    return { ...error, message: "无法连接更新服务器" };
+    const result = { ...error, message: "无法连接更新服务器" };
+    logger.debug("Update error classified", { original: error.message, classified: result.message });
+    return result;
   }
   if (isReleaseJsonUnavailable || isPlatformMissing) {
-    return { ...error, message: "更新发布尚未完成，请稍后重试" };
+    const result = { ...error, message: "更新发布尚未完成，请稍后重试" };
+    logger.debug("Update error classified", { original: error.message, classified: result.message });
+    return result;
   }
   if (is404) {
-    return { ...error, message: "更新源未配置，请等待发布" };
+    const result = { ...error, message: "更新源未配置，请等待发布" };
+    logger.debug("Update error classified", { original: error.message, classified: result.message });
+    return result;
   }
   return error;
 }
@@ -63,6 +70,7 @@ export function classifyUpdateError(error: AppErrorPayload): AppErrorPayload {
  * Error messages are classified into user-friendly Chinese strings.
  */
 export async function checkForUpdates(): Promise<UpdateCheckResponse> {
+  logger.info("Checking for updates...");
   const result = await invokeTauriCommand<UpdateCheckResult>(
     "check_for_updates",
     {},
@@ -76,9 +84,15 @@ export async function checkForUpdates(): Promise<UpdateCheckResponse> {
   );
 
   if (result.success && result.data) {
+    if (result.data.available) {
+      logger.info("Update available", { version: result.data.version });
+    } else {
+      logger.info("No update available");
+    }
     return { result: result.data, error: null };
   }
 
+  logger.warn("Update check failed", { code: result.error?.code, message: result.error?.message });
   return {
     result: null,
     error: result.error ? classifyUpdateError(result.error) : result.error,
@@ -93,6 +107,7 @@ export async function checkForUpdates(): Promise<UpdateCheckResponse> {
  * Errors are wrapped in structured AppErrorPayload (domain: system, operation: install-update).
  */
 export async function installUpdate(): Promise<UpdateInstallResponse> {
+  logger.info("Installing update...");
   const result = await invokeTauriCommand<UpdateInstallResult>(
     "install_update",
     {},
@@ -106,8 +121,10 @@ export async function installUpdate(): Promise<UpdateInstallResponse> {
   );
 
   if (result.success && result.data) {
+    logger.info("Update installed successfully");
     return { result: result.data, error: null };
   }
 
+  logger.error("Update install failed", { code: result.error?.code, message: result.error?.message });
   return { result: null, error: result.error };
 }

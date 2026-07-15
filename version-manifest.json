@@ -1,6 +1,6 @@
 {
-  "appVersion": "0.1.4",
-  "frontendVersion": "0.1.4",
-  "backendVersion": "0.1.4",
+  "appVersion": "0.1.0",
+  "frontendVersion": "0.1.0",
+  "backendVersion": "0.1.0",
   "workspaceSchemaVersion": "1.0.0"
 }

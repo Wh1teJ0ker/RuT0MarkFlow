@@ -1,4 +1,5 @@
 import { invokeTauriCommand } from "../../services/tauri";
+import { logger } from "../../services/logger";
 import type {
   WorkspaceState,
   WorkspaceInfo,
@@ -10,6 +11,10 @@ import type {
 
 /**
  * Result of a workspace selection attempt.
+ *
+ * `cancelled` is true when the user dismissed the native folder picker
+ * without choosing a directory. In that case the caller should preserve
+ * the existing workspace/document context instead of clearing it.
  */
 export interface WorkspaceSelectionResult {
   state: WorkspaceState;
@@ -17,6 +22,7 @@ export interface WorkspaceSelectionResult {
   error: AppErrorPayload | null;
   fileCount: number;
   indexTree: IndexTreeNode[];
+  cancelled: boolean;
 }
 
 /**
@@ -42,16 +48,20 @@ export async function selectWorkspace(): Promise<WorkspaceSelectionResult> {
       error: null,
       fileCount: result.data.workspace.fileCount,
       indexTree: result.data.indexTree ?? [],
+      cancelled: false,
     };
   }
 
   if (result.error?.code === "CANCELLED") {
+    // User dismissed the picker: signal cancellation so the caller can keep
+    // the existing workspace/document context instead of clearing it.
     return {
       state: "idle",
       workspace: null,
       error: null,
       fileCount: 0,
       indexTree: [],
+      cancelled: true,
     };
   }
 
@@ -61,6 +71,7 @@ export async function selectWorkspace(): Promise<WorkspaceSelectionResult> {
     error: result.error,
     fileCount: 0,
     indexTree: [],
+    cancelled: false,
   };
 }
 
@@ -89,6 +100,7 @@ export async function loadWorkspace(
       error: null,
       fileCount: result.data.workspace?.fileCount ?? 0,
       indexTree: result.data.indexTree ?? [],
+      cancelled: false,
     };
   }
 
@@ -98,18 +110,20 @@ export async function loadWorkspace(
     error: result.error,
     fileCount: 0,
     indexTree: [],
+    cancelled: false,
   };
 }
 
 /**
  * Refresh the workspace index (re-scan + re-build tree) without a dialog.
+ *
+ * The workspace root is read from the Rust-side AppState; the front-end no
+ * longer supplies a `rootPath`.
  */
-export async function refreshWorkspaceIndex(
-  rootPath: string,
-): Promise<WorkspaceSelectionResult> {
+export async function refreshWorkspaceIndex(): Promise<WorkspaceSelectionResult> {
   const result = await invokeTauriCommand<WorkspaceLoadResult>(
     "refresh_workspace_index",
-    { rootPath },
+    undefined,
     {
       domain: "workspace",
       operation: "refresh-workspace",
@@ -126,6 +140,7 @@ export async function refreshWorkspaceIndex(
       error: null,
       fileCount: result.data.workspace.fileCount,
       indexTree: result.data.indexTree ?? [],
+      cancelled: false,
     };
   }
 
@@ -135,21 +150,27 @@ export async function refreshWorkspaceIndex(
     error: result.error,
     fileCount: 0,
     indexTree: [],
+    cancelled: false,
   };
 }
 
 // ── Watcher commands ──────────────────────────────────────────────
 
 /**
- * Start the file-system watcher for the given workspace root path.
- * The watcher monitors .md/.markdown file changes and emits
- * "workspace://index-changed" events after a debounce period.
+ * Start the file-system watcher for the current authorised workspace.
+ *
+ * The workspace root is read from the Rust-side AppState; the front-end no
+ * longer supplies a `rootPath`. The watcher monitors .md/.markdown file
+ * changes and emits "workspace://index-changed" events after a debounce
+ * period.
  */
-export async function startWorkspaceWatcher(rootPath: string): Promise<boolean> {
+export async function startWorkspaceWatcher(): Promise<boolean> {
   const result = await invokeTauriCommand<string>(
     "start_workspace_watcher",
-    { rootPath },
   );
+  if (!result.success) {
+    logger.warn("Failed to start workspace watcher", { code: result.error?.code, message: result.error?.message });
+  }
   return result.success;
 }
 
@@ -160,6 +181,9 @@ export async function stopWorkspaceWatcher(): Promise<boolean> {
   const result = await invokeTauriCommand<string>(
     "stop_workspace_watcher",
   );
+  if (!result.success) {
+    logger.warn("Failed to stop workspace watcher", { code: result.error?.code, message: result.error?.message });
+  }
   return result.success;
 }
 
@@ -170,6 +194,7 @@ export async function loadAppSettings(): Promise<AppSettings> {
   if (result.success && result.data) {
     return result.data;
   }
+  logger.warn("Failed to load app settings, using defaults", { code: result.error?.code, message: result.error?.message });
   // Default fallback
   return {
     viewMode: "split-editor",
@@ -180,8 +205,11 @@ export async function loadAppSettings(): Promise<AppSettings> {
 export async function saveAppSettings(
   settings: AppSettings,
 ): Promise<void> {
-  await invokeTauriCommand<null>("save_app_settings", {
+  const result = await invokeTauriCommand<null>("save_app_settings", {
     settings,
   });
+  if (!result.success) {
+    logger.warn("Failed to save app settings", { code: result.error?.code, message: result.error?.message });
+  }
   // Silently ignore errors
 }

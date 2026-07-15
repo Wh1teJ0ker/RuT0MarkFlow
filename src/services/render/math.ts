@@ -71,7 +71,25 @@ export function postprocessMath(
         throwOnError: true,
         output: "html",
       });
-      result = result.replace(placeholder, rendered);
+      // Wrap the rendered KaTeX in a container that carries the original
+      // formula source and display mode, so the immersive editor can
+      // deserialize the block back to Markdown source (`$$...$$` / `$...$`)
+      // rather than losing the syntax to KaTeX HTML.
+      //
+      // The KaTeX-rendered HTML is still shown visually; the source is
+      // recoverable via the data attributes. This does NOT implement
+      // WYSIWYG editing of the formula itself (out_of_scope) — it only
+      // preserves the source for round-trip serialization.
+      const wrapperTag = display ? "div" : "span";
+      const wrapperClass = display
+        ? "math-block math-source-block"
+        : "math-inline math-source-block";
+      const sourceAttr = escapeAttr(formula);
+      const displayAttr = display ? "true" : "false";
+      result = result.replace(
+        placeholder,
+        `<${wrapperTag} class="${wrapperClass}" data-formula-source="${sourceAttr}" data-formula-display="${displayAttr}">${rendered}</${wrapperTag}>`,
+      );
     } catch (e) {
       // Formula failed — keep original text
       const displayText = display ? `$$${formula}$$` : `$${formula}$`;
@@ -84,4 +102,17 @@ export function postprocessMath(
   }
 
   return result;
+}
+
+/**
+ * Escape a string for safe insertion into an HTML attribute value
+ * (double-quoted). Mirrors resource.ts::escapeAttr — kept local to avoid
+ * a cross-module dependency for a tiny helper.
+ */
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
